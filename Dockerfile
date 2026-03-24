@@ -1,4 +1,4 @@
-FROM astral/uv:python3.14-slim AS base
+FROM astral/uv:python3.14-alpine AS base
 
 WORKDIR /app
 COPY . .
