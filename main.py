@@ -4,9 +4,7 @@ from helpers.wsobjs import WSObjects
 from datetime import datetime
 from typing import List, Dict
 
-import sys
-
-sys.path.append("../")
+# copycat from altamino/api, maybe we should shrink them
 from objects.errors import Errors
 from helpers.database.mongo import Database
 
