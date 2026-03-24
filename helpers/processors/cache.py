@@ -1,4 +1,4 @@
-from .database.redis import get
+from ..database.redis import get
 from typing import Optional
 
 

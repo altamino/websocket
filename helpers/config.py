@@ -1,5 +1,6 @@
 from os import environ
 
+
 class Config:
     MONGODB_CONNECTION_STRING = environ.get("MONGODB_CONNECTION_STRING")
     MONGODB_MAIN_DB = environ.get("MONGODB_MAIN_DB")
