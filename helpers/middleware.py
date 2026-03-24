@@ -1,14 +1,11 @@
 from typing import Union, Optional
 from fastapi import WebSocket
 
-import sys
-
-sys.path.append("../")
-from helpers.config import Config
-from helpers.wsobjs import WSObjects
-from helpers.processors.device import DeviceProcessor
-from helpers.processors.session import SessionProcessor
-from helpers.processors.signature import SignatureProcessor
+from .config import Config
+from .wsobjs import WSObjects
+from .processors.device import DeviceProcessor
+from .processors.session import SessionProcessor
+from .processors.signature import SignatureProcessor
 
 
 async def CheckRequest(
@@ -38,7 +35,7 @@ async def CheckRequest(
                 raise Exception()
 
             data_time = body[1]
-        except:
+        except Exception:
             return [
                 None,
                 None,

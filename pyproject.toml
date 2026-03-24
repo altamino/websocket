@@ -1,0 +1,14 @@
+[project]
+name = "websocket"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.135.2",
+    "motor>=3.7.1",
+    "orjson>=3.11.7",
+    "redis>=7.4.0",
+    "ruff>=0.15.7",
+    "uvicorn>=0.42.0",
+]
