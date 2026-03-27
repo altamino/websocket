@@ -14,13 +14,14 @@ class Config:
     S3_BUCKET_NAME = environ.get("S3_BUCKET_NAME")
     MEDIA_BASE_URL = environ.get("MEDIA_BASE_URL")
 
-    MAX_FILE_SIZE = environ.get("MAX_FILE_SIZE", 5000000)
-    MAX_TEXT_SIZE = environ.get("MAX_TEXT_SIZE", 2000)
+    MAX_FILE_SIZE = int(environ.get("MAX_FILE_SIZE", 5000000))
+    MAX_TEXT_SIZE = int(environ.get("MAX_TEXT_SIZE", 2000))
 
     SMTP_SERVER = environ.get("SMTP_SERVER")
     SMTP_PORT = environ.get("SMTP_PORT")
     SMTP_USER = environ.get("SMTP_USER")
     SMTP_PSWD = environ.get("SMTP_PSWD")
+    SMTP_SNDR = environ.get("SMTP_SNDR")
 
     API_DOMAIN = environ.get("API_DOMAIN")
     SITE_DOMAIN = environ.get("SITE_DOMAIN")

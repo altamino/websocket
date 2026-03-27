@@ -11,5 +11,6 @@ dependencies = [
     "orjson>=3.11.7",
     "redis>=7.4.0",
     "ruff>=0.15.7",
-    "uvicorn>=0.42.0",
+    "uvicorn[standart]>=0.42.0",
+    "websockets>=16.0",
 ]
