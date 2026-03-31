@@ -5,4 +5,4 @@ COPY . .
 
 RUN uv sync
 
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081", "--ws-ping-interval", "30", "--ws-ping-timeout", "120"]
