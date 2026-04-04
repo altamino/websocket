@@ -7,6 +7,9 @@ then
     exit 1
 fi
 
+uv run ruff format .
+
 git add --all
 git commit -a -m "$1"
+
 git push
