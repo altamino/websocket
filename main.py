@@ -57,6 +57,12 @@ manager = ConnectionManager()
 async def index():
     return Errors.InvalidRequest()
 
+@app.get("/health")
+async def health():
+    return {
+        "alive": True
+    }
+
 
 @app.websocket("/")
 async def websocket_endpoint(ws: WebSocket):
@@ -84,8 +90,8 @@ async def websocket_endpoint(ws: WebSocket):
                     await manager.answer(WSObjects.Pong(ws_req_id), ws)
                     continue
 
-                if data["t"] == 1001 and data["o"].get("markHasRead", None) != None:
-                    if data["o"]["markHasRead"] == True:
+                if data["t"] == 1001 and data["o"].get("markHasRead", None) is not None:
+                    if data["o"]["markHasRead"] is True:
                         ndcId = data["o"]["ndcId"]
                         chatId = data["o"]["threadId"]
                         readTimestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
