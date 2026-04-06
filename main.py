@@ -57,11 +57,10 @@ manager = ConnectionManager()
 async def index():
     return Errors.InvalidRequest()
 
+
 @app.get("/health")
 async def health():
-    return {
-        "alive": True
-    }
+    return {"alive": True}
 
 
 @app.websocket("/")
