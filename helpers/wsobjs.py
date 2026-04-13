@@ -1,5 +1,6 @@
 from datetime import datetime, UTC
 from orjson import dumps
+from helpers.constants import WS_TYPE_ERROR
 
 
 class WSObjects:
@@ -28,7 +29,7 @@ class WSObjects:
         ws_req_id = ws_req_id or 0
         ndcId = ndcId or 0
         return {
-            "t": 113,
+            "t": WS_TYPE_ERROR,
             "o": {
                 "id": ws_req_id,
                 "ndcId": ndcId,

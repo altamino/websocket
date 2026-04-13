@@ -1,0 +1,4 @@
+# WebSocket message types
+WS_TYPE_PING = 116
+WS_TYPE_MARK_READ = 1001
+WS_TYPE_ERROR = 113

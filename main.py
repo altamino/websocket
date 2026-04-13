@@ -3,10 +3,12 @@ from helpers.middleware import CheckRequest
 from helpers.wsobjs import WSObjects
 from datetime import datetime
 from typing import List, Dict
+import asyncio
 
 # copycat from altamino/api, maybe we should shrink them
 from objects.errors import Errors
 from helpers.database.mongo import Database
+from helpers.constants import WS_TYPE_PING, WS_TYPE_MARK_READ
 
 
 app = FastAPI()
@@ -31,12 +33,15 @@ class ConnectionManager:
         await websocket.send_json(message)
 
     async def selective_broadcast(self, message: dict, uids: List[str]):
+        tasks = []
         got_counter = 0
         for uid in uids:
             if uid in self.active_connections.keys():
                 for connection in self.active_connections[uid]:
-                    await connection.send_json(message)
+                    tasks.append(connection.send_json(message))
                     got_counter += 1
+        if tasks:
+            await asyncio.gather(*tasks)
 
         return got_counter
 
@@ -67,8 +72,11 @@ async def health():
 async def websocket_endpoint(ws: WebSocket):
     admin, uid, error = await CheckRequest(ws)
     if error:
-        print(error)
-        return error, 400
+        print(f"WebSocket connection rejected: {error['message']}")
+        await ws.close(
+            code=error.get("code", 1008), reason=error.get("message", "Unauthorized")
+        )
+        return
 
     if admin:
         await ws.accept()
@@ -85,23 +93,27 @@ async def websocket_endpoint(ws: WebSocket):
                     continue
 
                 ws_req_id = data["o"].get("id")
-                if data["t"] == 116:
+                if data["t"] == WS_TYPE_PING:
                     await manager.answer(WSObjects.Pong(ws_req_id), ws)
                     continue
 
-                if data["t"] == 1001 and data["o"].get("markHasRead", None) is not None:
+                if (
+                    data["t"] == WS_TYPE_MARK_READ
+                    and data["o"].get("markHasRead", None) is not None
+                ):
                     if data["o"]["markHasRead"] is True:
                         ndcId = data["o"]["ndcId"]
                         chatId = data["o"]["threadId"]
                         readTimestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
-                        db = await Database().init()
-                        chat = await db.get(f"x{ndcId}", "Chats")
-                        await chat.update_one(
+                        db_instance = Database()
+                        # The database connection should be initialized once globally,
+                        # not per request. Assuming it's initialized elsewhere or the first call to get() will init.
+                        db = await db_instance.get(f"x{ndcId}")
+                        await db["Chats"].update_one(
                             {"id": chatId},
                             {"$set": {f"lastReadedList.{uid}": readTimestamp}},
                         )
-                        await db.close()
                     continue
 
             if data.get("ADMIN-SAYS") and admin:
@@ -116,7 +128,12 @@ async def websocket_endpoint(ws: WebSocket):
                         f = await manager.selective_broadcast(payload, users)
 
                     await manager.answer(
-                        {"status": "ok", "clients": len(users), "probably_got": f}, ws
+                        {
+                            "status": "ok",
+                            "clients": len(users) if users != "ALL" else f,
+                            "probably_got": f,
+                        },
+                        ws,
                     )
                 except Exception as e:
                     await manager.answer({"status": "error", "reason": str(e)}, ws)
@@ -125,5 +142,10 @@ async def websocket_endpoint(ws: WebSocket):
             continue
 
     except WebSocketDisconnect:
+        pass  # Handled in finally block
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        await ws.close(code=1011, reason="Internal Server Error")
+    finally:
         if not admin:
             manager.disconnect(ws, uid)

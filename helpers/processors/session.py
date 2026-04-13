@@ -29,7 +29,7 @@ class SessionProcessor:
             }
         )
 
-        await CacheProcessor.Make(key, data, prefix, 86400)
+        await CacheProcessor.Make(key, data, prefix, timeout)
 
         return key
 

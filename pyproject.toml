@@ -10,7 +10,12 @@ dependencies = [
     "motor>=3.7.1",
     "orjson>=3.11.7",
     "redis>=7.4.0",
-    "ruff>=0.15.7",
     "uvicorn[standard]>=0.42.0",
     "websockets>=16.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.10",
+    "ty>=0.0.29",
 ]

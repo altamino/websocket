@@ -1,8 +1,6 @@
-from typing import Union, Optional
 from fastapi import WebSocket
 
 from .config import Config
-from .wsobjs import WSObjects
 from .processors.device import DeviceProcessor
 from .processors.session import SessionProcessor
 from .processors.signature import SignatureProcessor
@@ -10,7 +8,7 @@ from .processors.signature import SignatureProcessor
 
 async def CheckRequest(
     websocket: WebSocket,
-) -> Union[Optional[bool], Optional[str], Optional[dict]]:
+) -> list:
     admin = False
     uid = None
 
@@ -18,7 +16,11 @@ async def CheckRequest(
     admverify = websocket.headers.get("WS-ADMIN-VERIFY")
     if admkey and admverify:
         if admkey != Config.WS_ADMIN_KEY or admverify != Config.WS_ADMIN_VERIFY:
-            return WSObjects.HttpError(1008, "Invalid (verify or usual) keys."), 400
+            return [
+                None,
+                None,
+                {"code": 1008, "message": "Invalid (verify or usual) keys."},
+            ]
         admin = True
 
     if admin:
@@ -39,7 +41,7 @@ async def CheckRequest(
             return [
                 None,
                 None,
-                WSObjects.HttpError(1003, "Unsupported or invalid data."),
+                {"code": 1003, "message": "Unsupported or invalid data."},
             ]
 
         sid = await SessionProcessor.Get(auth)
@@ -47,7 +49,7 @@ async def CheckRequest(
             return [
                 None,
                 None,
-                WSObjects.HttpError(1003, "Unsupported or invalid session."),
+                {"code": 1003, "message": "Unsupported or invalid session."},
             ]
 
         did_valid = DeviceProcessor.Validate(device)
@@ -56,7 +58,7 @@ async def CheckRequest(
             return [
                 None,
                 None,
-                WSObjects.HttpError(1003, "Unsupported or invalid device."),
+                {"code": 1003, "message": "Unsupported or invalid device."},
             ]
 
         uid = sid["uid"]
