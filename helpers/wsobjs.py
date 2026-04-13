@@ -54,5 +54,5 @@ class WSObjects:
         return WSObjects.UniversalMessage("Internal socket error")
 
     @staticmethod
-    def Pong(ws_req_id: str | None) -> dict:
+    def Pong(ws_req_id: str | None = None) -> dict:
         return {"t": 117, "o": {"id": ws_req_id, "threadChannelUserInfoList": []}}
