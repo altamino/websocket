@@ -88,15 +88,17 @@ async def websocket_endpoint(ws: WebSocket):
             data = await ws.receive_json()
 
             if data.get("t") and data.get("o"):
+                # ping
+                if data["t"] == WS_TYPE_PING:
+                    await manager.answer(WSObjects.Pong(), ws)
+                    continue
+
+                # check for id
                 if not data["o"].get("id"):
                     await manager.answer(WSObjects.WSError(1, "No ID of request"), ws)
                     continue
 
                 ws_req_id = data["o"].get("id")
-                if data["t"] == WS_TYPE_PING:
-                    await manager.answer(WSObjects.Pong(ws_req_id), ws)
-                    continue
-
                 if (
                     data["t"] == WS_TYPE_MARK_READ
                     and data["o"].get("markHasRead", None) is not None
@@ -107,8 +109,6 @@ async def websocket_endpoint(ws: WebSocket):
                         readTimestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
                         db_instance = Database()
-                        # The database connection should be initialized once globally,
-                        # not per request. Assuming it's initialized elsewhere or the first call to get() will init.
                         db = await db_instance.get(f"x{ndcId}")
                         await db["Chats"].update_one(
                             {"id": chatId},
@@ -142,7 +142,7 @@ async def websocket_endpoint(ws: WebSocket):
             continue
 
     except WebSocketDisconnect:
-        pass  # Handled in finally block
+        pass
     except Exception as e:
         print(f"WebSocket error: {e}")
         await ws.close(code=1011, reason="Internal Server Error")
