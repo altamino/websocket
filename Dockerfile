@@ -19,4 +19,5 @@ USER 1000
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081", "--ws-ping-interval", "60", "--ws-ping-timeout", "120"]
+#CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081", "--ws-ping-interval", "60", "--ws-ping-timeout", "120"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081", "--ws-ping-interval", "0", "--ws-ping-timeout", "0"]

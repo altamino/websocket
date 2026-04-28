@@ -1,0 +1,11 @@
+#!/bin/bash
+
+echo -e '\e[1;34mFormatting...\e[0m\n'
+
+uv run ruff format .
+
+echo -e '\n\e[1;34mValidating...\e[0m\n'
+
+uv run ruff check .
+
+echo -e '\n\e[1;32mDone!\e[0m'
