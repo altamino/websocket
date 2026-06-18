@@ -1,0 +1,19 @@
+name: Trigger webhook after successful build
+
+on:
+    workflow_run:
+        workflows: ["Repo -> Build -> GHCR"]
+        types:
+            - completed
+
+jobs:
+    on-success:
+        runs-on: ubuntu-latest
+        environment: websocket
+        if: ${{ github.event.workflow_run.conclusion == 'success' }}
+        steps:
+            - name: Trigger webhook
+              run: |
+                  curl -X POST \
+                    -H "X-Webhook-Secret: ${{ secrets.WEBHOOK_SECRET }}" \
+                    "${{ secrets.WEBHOOK_URL }}"
