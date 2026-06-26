@@ -62,17 +62,6 @@ async def handle_message(data: dict, manager: ConnectionManager, uid: str, isAdm
 	if ndcId:
 		await on_ws_ndc_event(uid, ndcId)
 
-
-	if chatId:
-		print("chatid 1 ", chatId)
-		print(is_valid_uuid4(chatId))
-		if not is_valid_uuid4(chatId): return
-	if targetChatId:
-		print("chatid 2 ", targetChatId)
-		print(is_valid_uuid4(targetChatId))
-		if not is_valid_uuid4(targetChatId): return
-
-
 	if (
 		t == WS_TYPE_MARK_READ and
 		o.get("markHasRead", None) is not None
