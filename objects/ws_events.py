@@ -43,71 +43,50 @@ class ChatEvents:
 
 
 
+    @staticmethod
+    def _send_topic(ndcId: int, topic: str, userProfileList: list) -> dict:
+        return {
+            "ndcId": ndcId,
+            "topic": topic,
+            "userProfileCount": len(userProfileList),
+            "userProfileList": userProfileList
+        }
+
 
 
     @staticmethod
-    def typing_start(uid: str, chatId: str, ndcId: int, reqid: int | str, threadType: int = 2) -> dict:
+    def typing_start(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
             "t": WS_ACTION_START,
-            "o": {
-                "actions": [ACTION_TYPING],
-                "target": f"ndc://x{ndcId}/chat-thread/{chatId}",
-                "ndcId": ndcId,
-                "params": {
-                    "threadType": threadType,
-                },
-                "id": str(reqid),
-            }
+            "o": ChatEvents._send_topic(ndcId, f"users-start-typing-at:{chatId}", userProfileList)
         }
 
+
     @staticmethod
-    def typing_end(uid: str, chatId: str, ndcId: int, reqid: str | int, duration: int, threadType: int = 2) -> dict:
+    def typing_end(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
             "t": WS_ACTION_END,
-            "o": {
-                "actions": [ACTION_TYPING],
-                "target": f"ndc://x{ndcId}/chat-thread/{chatId}",
-                "ndcId": ndcId,
-                "params": {
-                    "duration": duration,
-                    "threadType": threadType,
-                },
-                "id": str(reqid),
-            }
+            "o": ChatEvents._send_topic(ndcId, f"users-end-typing-at:{chatId}", userProfileList)
         }
 
+
+
     @staticmethod
-    def recording_start(uid: str, chatId: str, ndcId: int, reqid: str | int, threadType: int = 2) -> dict:
+    def recording_start(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
             "t": WS_ACTION_START,
-            "o": {
-                "actions": [ACTION_RECORDING],
-                "target": f"ndc://x{ndcId}/chat-thread/{chatId}",
-                "ndcId": ndcId,
-                "params": {
-                    "topicIds": [],
-                    "threadType": threadType,
-                },
-                "id": str(reqid),
-            }
+            "o": ChatEvents._send_topic(ndcId, f"users-start-recording-at:{chatId}", userProfileList)
         }
 
+
     @staticmethod
-    def recording_end(uid: str, chatId: str, ndcId: int, reqid: str | int, duration: int, threadType: int = 2) -> dict:
+    def recording_end(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
             "t": WS_ACTION_END,
-            "o": {
-                "actions": [ACTION_RECORDING],
-                "target": f"ndc://x{ndcId}/chat-thread/{chatId}",
-                "ndcId": ndcId,
-                "params": {
-                    "duration": duration,
-                    "topicIds": [],
-                    "threadType": threadType,
-                },
-                "id": str(reqid),
-            }
+            "o": ChatEvents._send_topic(ndcId, f"users-end-recording-at:{chatId}", userProfileList)
         }
+
+
 
 
 

@@ -1,7 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from helpers.middleware import CheckRequest
-from helpers.validator import is_valid_id
-from helpers.wsobjs import WSObjects
 
 from objects.errors import Errors
 from helpers.constants import (
@@ -47,17 +45,7 @@ async def websocket_endpoint(ws: WebSocket):
             data = await ws.receive_json()
 
             if data.get("t") and data.get("o"):
-                # ping
-                if data["t"] == WS_TYPE_PING:
-                    await manager.answer(WSObjects.Pong(), ws)
-                    continue
-
-                # check for id
-                if not data["o"].get("id") or not is_valid_id(data["o"].get("id")):
-                    await manager.answer(WSObjects.WSError(1, "No ID of request"), ws)
-                    continue
-
-                try:await handle_message(data, manager, uid, admin)
+                try:await handle_message(data, manager, uid, admin, ws)
                 except Exception as e:
                     print(e)
 
