@@ -75,7 +75,7 @@ async def handle_message(data: dict, manager: ConnectionManager, uid: str, isAdm
 		and ndcId is not None
 		and chatId is not None
 	):
-		await on_chat_screen_open(uid, chatId)
+		await on_chat_screen_open(uid, chatId, ndcId, manager)
 
 
 	elif ( 
@@ -83,7 +83,7 @@ async def handle_message(data: dict, manager: ConnectionManager, uid: str, isAdm
 		and ndcId is not None
 		and chatId is not None
 	):
-		await on_chat_screen_close(uid, chatId)
+		await on_chat_screen_close(uid, chatId, ndcId, manager)
 	
 
 

@@ -43,6 +43,8 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             data = await ws.receive_json()
+            if data:
+                print("new data")
 
             if data.get("t") and data.get("o"):
                 try:await handle_message(data, manager, uid, admin, ws)
