@@ -1,59 +1,18 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from helpers.middleware import CheckRequest
+from helpers.validator import is_valid_id
 from helpers.wsobjs import WSObjects
-from datetime import datetime
-from typing import List, Dict
-import asyncio
 
-# copycat from altamino/api, maybe we should shrink them
 from objects.errors import Errors
-from helpers.database.mongo import Database
-from helpers.constants import WS_TYPE_PING, WS_TYPE_MARK_READ
+from helpers.constants import (
+    WS_TYPE_PING,
+)
+
+from handlers import handle_message
+from helpers.connection_manager import ConnectionManager
 
 
 app = FastAPI()
-
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, List[WebSocket]] = {}
-
-    async def connect(self, websocket: WebSocket, uid: str):
-        await websocket.accept()
-        if uid not in self.active_connections:
-            self.active_connections[uid] = []
-        self.active_connections[uid].append(websocket)
-
-    def disconnect(self, websocket: WebSocket, uid: str):
-        self.active_connections[uid].remove(websocket)
-        if not self.active_connections[uid]:
-            del self.active_connections[uid]
-
-    async def answer(self, message: dict, websocket: WebSocket):
-        await websocket.send_json(message)
-
-    async def selective_broadcast(self, message: dict, uids: List[str]):
-        tasks = []
-        got_counter = 0
-        for uid in uids:
-            if uid in self.active_connections.keys():
-                for connection in self.active_connections[uid]:
-                    tasks.append(connection.send_json(message))
-                    got_counter += 1
-        if tasks:
-            await asyncio.gather(*tasks)
-
-        return got_counter
-
-    async def broadcast(self, message: dict):
-        got_counter = 0
-        for connections in self.active_connections.values():
-            for connection in connections:
-                await connection.send_json(message)
-                got_counter += 1
-
-        return got_counter
-
 
 manager = ConnectionManager()
 
@@ -94,27 +53,13 @@ async def websocket_endpoint(ws: WebSocket):
                     continue
 
                 # check for id
-                if not data["o"].get("id"):
+                if not data["o"].get("id") or not is_valid_id(data["o"].get("id")):
                     await manager.answer(WSObjects.WSError(1, "No ID of request"), ws)
                     continue
 
-                ws_req_id = data["o"].get("id")
-                if (
-                    data["t"] == WS_TYPE_MARK_READ
-                    and data["o"].get("markHasRead", None) is not None
-                ):
-                    if data["o"]["markHasRead"] is True:
-                        ndcId = data["o"]["ndcId"]
-                        chatId = data["o"]["threadId"]
-                        readTimestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-
-                        db_instance = Database()
-                        db = await db_instance.get(f"x{ndcId}")
-                        await db["Chats"].update_one(
-                            {"id": chatId},
-                            {"$set": {f"lastReadedList.{uid}": readTimestamp}},
-                        )
-                    continue
+                try:await handle_message(data, manager, uid, admin)
+                except Exception as e:
+                    print(e)
 
             if data.get("ADMIN-SAYS") and admin:
                 try:
