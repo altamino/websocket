@@ -28,14 +28,12 @@ async def health():
 @app.websocket("/")
 async def websocket_endpoint(ws: WebSocket):
     admin, uid, error = await CheckRequest(ws)
-    """
     if error:
         print(f"WebSocket connection rejected: {error['message']}")
         await ws.close(
             code=error.get("code", 1008), reason=error.get("message", "Unauthorized")
         )
         return
-    """
 
     if admin:
         await ws.accept()
@@ -45,8 +43,6 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             data = await ws.receive_json()
-            if data:
-                print("new data")
 
             if data.get("t") and data.get("o"):
                 try:await handle_message(data, manager, uid, admin, ws)
