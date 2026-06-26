@@ -34,12 +34,15 @@ from .chat import (
 from .community import on_ws_ndc_event
 
 async def handle_message(data: dict, manager: ConnectionManager, uid: str, isAdmin: bool, ws):
+	print("handler called")
 	t: dict = data.get("t")
 	o: dict = data.get("o")
 	if t is None or o is None:
+			print("t or o is none")
 			return
 
 	if data["t"] == WS_TYPE_PING:
+		print("ws ping")
 		await manager.answer(WSObjects.Pong(), ws)
 		refresh_chat_viewer(uid)
 		return
@@ -61,8 +64,12 @@ async def handle_message(data: dict, manager: ConnectionManager, uid: str, isAdm
 
 
 	if chatId:
+		print("chatid 1 ", chatId)
+		print(is_valid_uuid4(chatId))
 		if not is_valid_uuid4(chatId): return
 	if targetChatId:
+		print("chatid 2 ", targetChatId)
+		print(is_valid_uuid4(targetChatId))
 		if not is_valid_uuid4(targetChatId): return
 
 
