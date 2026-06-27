@@ -35,7 +35,10 @@ async def websocket_endpoint(ws: WebSocket):
 
     try:
         while True:
-            data = await ws.receive_json()
+            try:data = await ws.receive_json()
+            except Exception as e:
+                print(f"failed recive json: {e}")
+                continue
             if data.get("t") and data.get("o"):
                 try:
                     await handle_message(data, manager, uid, admin, ws)
