@@ -45,7 +45,7 @@ async def handle_message(data: dict, manager: ConnectionManager, uid: str, isAdm
 
 	if data["t"] == WS_TYPE_PING:
 		await manager.answer(WSObjects.Pong(), ws)
-		refresh_user_viewing(uid)
+		await refresh_user_viewing(uid)
 		return
 
 	if not data["o"].get("id") or not is_valid_id(data["o"].get("id")):
