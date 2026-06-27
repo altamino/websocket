@@ -177,9 +177,9 @@ async def mark_read(data: dict, uid: str):
         chatId  = data["o"]["threadId"]
         readTimestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         db = await Database().init()
-        table = db.get(f"x{ndcId}", "Chats")
+        table = await db.get(f"x{ndcId}", "Chats")
         await table.update_one(
             {"id": chatId},
             {"$set": {f"lastReadedList.{uid}": readTimestamp}},
         )
-        db.close()
+        await db.close()
