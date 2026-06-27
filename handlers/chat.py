@@ -44,12 +44,15 @@ async def _refresh_chatting(uid: str, chatId: str, ndcId: int):
 async def _get_profiles(ndcId: int, uids: list[str]) -> list[dict]:
     if not uids:
         return []
+    print(f"[DEBUG] _get_profiles ndcId={ndcId} uids={uids}")
     db = await Database().init()
     try:
         table = await db.get(f"x{ndcId}", "Users")
         profiles = []
         async for row in table.find({"id": {"$in": uids}}):
+            print(f"[DEBUG] found user: {row.get('id')}")
             profiles.append(User.OwnNonSensetiveProfile(row, ndcId=ndcId, membershipStatus=1))
+        print(f"[DEBUG] profiles count: {len(profiles)}")
         return profiles
     finally:
         await db.close()

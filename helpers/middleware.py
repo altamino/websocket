@@ -12,55 +12,41 @@ async def CheckRequest(
     admin = False
     uid = None
 
-    admkey = websocket.headers.get("WS-ADMIN-KEY")
-    admverify = websocket.headers.get("WS-ADMIN-VERIFY")
-    if admkey and admverify:
-        if admkey != Config.WS_ADMIN_KEY or admverify != Config.WS_ADMIN_VERIFY:
-            return [
-                None,
-                None,
-                {"code": 1008, "message": "Invalid (verify or usual) keys."},
-            ]
-        admin = True
+    try:
+        auid = websocket.headers["AUID"]
+        auth = websocket.headers["NDCAUTH"]
+        device = websocket.headers["NDCDEVICEID"]
+        signature = websocket.headers["NDC-MSG-SIG"]
+        body = websocket.query_params["signbody"].split("|")
 
-    if admin:
-        uid = "00000000-0000-0000-0000-000000000000"
-    else:
-        try:
-            auid = websocket.headers["AUID"]
-            auth = websocket.headers["NDCAUTH"]
-            device = websocket.headers["NDCDEVICEID"]
-            signature = websocket.headers["NDC-MSG-SIG"]
-            body = websocket.query_params["signbody"].split("|")
+        if len(body) != 2 or body[0] != device:
+            raise Exception()
 
-            if len(body) != 2 or body[0] != device:
-                raise Exception()
+        data_time = body[1]
+    except Exception:
+        return [
+            None,
+            None,
+            {"code": 1003, "message": "Unsupported or invalid data."},
+        ]
 
-            data_time = body[1]
-        except Exception:
-            return [
-                None,
-                None,
-                {"code": 1003, "message": "Unsupported or invalid data."},
-            ]
+    sid = await SessionProcessor.Get(auth)
+    if not sid or sid["uid"] != auid:
+        return [
+            None,
+            None,
+            {"code": 1003, "message": "Unsupported or invalid session."},
+        ]
 
-        sid = await SessionProcessor.Get(auth)
-        if not sid or sid["uid"] != auid:
-            return [
-                None,
-                None,
-                {"code": 1003, "message": "Unsupported or invalid session."},
-            ]
+    did_valid = DeviceProcessor.Validate(device)
+    sig_valid = SignatureProcessor.Validate(signature, f"{device}|{data_time}")
+    if not did_valid or not sig_valid:
+        return [
+            None,
+            None,
+            {"code": 1003, "message": "Unsupported or invalid device."},
+        ]
 
-        did_valid = DeviceProcessor.Validate(device)
-        sig_valid = SignatureProcessor.Validate(signature, f"{device}|{data_time}")
-        if not did_valid or not sig_valid:
-            return [
-                None,
-                None,
-                {"code": 1003, "message": "Unsupported or invalid device."},
-            ]
-
-        uid = sid["uid"]
+    uid = sid["uid"]
 
     return [admin, uid, None]
