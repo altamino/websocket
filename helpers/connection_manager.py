@@ -60,14 +60,16 @@ class ConnectionManager:
     async def _listen(self):
         async for raw in self.pubsub.listen():
             if raw["type"] != "message":
-                continue
+                print("type is not message")
             try:
                 cmd = json.loads(raw["data"])
             except (TypeError, ValueError):
-                continue
+                print("decode error")
 
             message = cmd.get("message")
             uids = cmd.get("uids")
+
+            print(message)
 
             if uids:
                 await self._local_selective_broadcast(message, uids)

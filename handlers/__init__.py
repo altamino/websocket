@@ -36,8 +36,9 @@ from .community import on_ws_ndc_event
 async def handle_message(data: dict, manager: ConnectionManager, uid: str, isAdmin: bool, ws):
 	t: dict = data.get("t")
 	o: dict = data.get("o")
+	print(data)
 	if t is None or o is None:
-			return
+		return
 
 	if data["t"] == WS_TYPE_PING:
 		await manager.answer(WSObjects.Pong(), ws)
@@ -58,7 +59,7 @@ async def handle_message(data: dict, manager: ConnectionManager, uid: str, isAdm
 
 	if ndcId:
 		await on_ws_ndc_event(uid, ndcId)
-
+	return
 	if (
 		t == WS_TYPE_MARK_READ and
 		o.get("markHasRead", None) is not None
