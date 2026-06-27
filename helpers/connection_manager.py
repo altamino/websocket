@@ -14,22 +14,17 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
 
-        # отдельный клиент только для pub/sub, не шарим с общим кэш-клиентом
         self.pubsub_redis = None
         self.pubsub = None
         self._listener_task: Optional[asyncio.Task] = None
+        self._stopping = False
 
     async def start(self):
-        print("starting redis pub/sub")
-        self.pubsub_redis = aioredis.from_url(
-            Config.REDIS_CONNECTION_STRING, decode_responses=True
-        )
-        self.pubsub = self.pubsub_redis.pubsub()
-        await self.pubsub.subscribe(self.CHANNEL_CMD)
-        self._listener_task = asyncio.create_task(self._listen_with_guard())
+        self._stopping = False
+        self._listener_task = asyncio.create_task(self._listen_forever())
 
     async def stop(self):
-        print("closing redis pub/sub")
+        self._stopping = True
         if self._listener_task:
             self._listener_task.cancel()
         if self.pubsub:
@@ -70,13 +65,41 @@ class ConnectionManager:
         if tasks:
             await asyncio.gather(*tasks)
 
-    # --- слушатель Redis pub/sub ---
 
-    async def _listen_with_guard(self):
-        try:
-            await self._listen()
-        except Exception as e:
-            print(f"[FATAL] WS listener died: {e}")
+
+    async def _connect_pubsub(self):
+        self.pubsub_redis = aioredis.from_url(
+            Config.REDIS_CONNECTION_STRING,
+            decode_responses=True,
+            socket_timeout=None,   
+            socket_connect_timeout=5, 
+            health_check_interval=25,
+            retry_on_timeout=True,
+        )
+        self.pubsub = self.pubsub_redis.pubsub()
+        await self.pubsub.subscribe(self.CHANNEL_CMD)
+
+    async def _listen_forever(self):
+        backoff = 1
+        while not self._stopping:
+            try:
+                await self._connect_pubsub()
+                print("redis pub/sub connected")
+                backoff = 1
+                await self._listen()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print(f"[WS listener error] {e!r}, reconnecting in {backoff}s")
+                try:
+                    if self.pubsub:
+                        await self.pubsub.close()
+                    if self.pubsub_redis:
+                        await self.pubsub_redis.close()
+                except Exception:
+                    pass
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30)
 
     async def _listen(self):
         async for raw in self.pubsub.listen():
@@ -91,6 +114,7 @@ class ConnectionManager:
 
             message = cmd.get("message")
             uids = cmd.get("uids")
+            print(f"got ws command, uids={uids}")
 
             if uids:
                 await self._local_selective_broadcast(message, uids)
