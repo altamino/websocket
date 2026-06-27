@@ -18,7 +18,13 @@ class ConnectionManager:
         self.redis = get_redis()
         self.pubsub = self.redis.pubsub()
         await self.pubsub.subscribe(self.CHANNEL_CMD)
-        self._listener_task = asyncio.create_task(self._listen())
+        self._listener_task = asyncio.create_task(self._listen_with_guard())
+
+    async def _listen_with_guard(self):
+        try:
+            await self._listen()
+        except Exception as e:
+            print(f"[FATAL] WS listener died: {e}")
 
     async def stop(self):
         if self._listener_task:
@@ -56,20 +62,19 @@ class ConnectionManager:
             for connection in connections:
                 await connection.send_json(message)
 
-
     async def _listen(self):
         async for raw in self.pubsub.listen():
             if raw["type"] != "message":
-                print("type is not message")
+                continue  # пропускаем subscribe/unsubscribe подтверждения
+
             try:
                 cmd = json.loads(raw["data"])
             except (TypeError, ValueError):
                 print("decode error")
+                continue  # пропускаем, если не смогли распарсить
 
             message = cmd.get("message")
             uids = cmd.get("uids")
-
-            print(message)
 
             if uids:
                 await self._local_selective_broadcast(message, uids)
