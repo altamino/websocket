@@ -28,8 +28,11 @@ from .chat import (
 		on_chat_message_typing_end,
 		on_chat_voice_recording_end,
 		on_chatting_end,
-		refresh_chat_viewer
 )
+
+from ._refresh_viewer import refresh_user_viewing
+
+
 
 from .community import on_ws_ndc_event
 
@@ -42,7 +45,7 @@ async def handle_message(data: dict, manager: ConnectionManager, uid: str, isAdm
 
 	if data["t"] == WS_TYPE_PING:
 		await manager.answer(WSObjects.Pong(), ws)
-		refresh_chat_viewer(uid)
+		refresh_user_viewing(uid)
 		return
 
 	if not data["o"].get("id") or not is_valid_id(data["o"].get("id")):
