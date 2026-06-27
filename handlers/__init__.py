@@ -59,7 +59,8 @@ async def handle_message(data: dict, manager: ConnectionManager, uid: str, isAdm
 
 	if ndcId:
 		await on_ws_ndc_event(uid, ndcId)
-	return
+
+	
 	if (
 		t == WS_TYPE_MARK_READ and
 		o.get("markHasRead", None) is not None

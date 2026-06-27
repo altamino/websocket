@@ -2,6 +2,8 @@ import asyncio
 import json
 from typing import Dict, List, Optional
 
+
+from helpers.database.redis import get as get_redis
 from fastapi import WebSocket
 from redis import asyncio as aioredis
 
@@ -33,8 +35,6 @@ class ConnectionManager:
         if self.pubsub_redis:
             await self.pubsub_redis.close()
 
-    # --- локальные WS-соединения этого процесса ---
-
     async def connect(self, websocket: WebSocket, uid: str):
         await websocket.accept()
         if uid not in self.active_connections:
@@ -48,8 +48,6 @@ class ConnectionManager:
 
     async def answer(self, message: dict, websocket: WebSocket):
         await websocket.send_json(message)
-
-    # --- доставка локальным клиентам этого процесса ---
 
     async def _local_broadcast(self, message: dict):
         for connections in self.active_connections.values():
@@ -114,9 +112,23 @@ class ConnectionManager:
 
             message = cmd.get("message")
             uids = cmd.get("uids")
-            print(f"got ws command, uids={uids}")
 
             if uids:
                 await self._local_selective_broadcast(message, uids)
             else:
                 await self._local_broadcast(message)
+
+
+
+
+
+async def broadcast_ws_message(message: dict, uids: Optional[List[str]] = None):
+    """
+    uids=None -> for all users
+    uids=[...] -> for selected
+    """
+    redis = get_redis()
+    payload = {"message": message}
+    if uids is not None:
+        payload["uids"] = uids
+    await redis.publish(ConnectionManager.CHANNEL_CMD, json.dumps(payload))

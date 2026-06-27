@@ -24,4 +24,13 @@ ACTION_RECORDING = "Recording"
 ACTION_CHATTING = "Chatting" #start - turn on screen, end turn off screen
 ACTION_BROWSING = "Browsing"
 
-CHAT_VIEWER_TTL_SECONDS = 40  # sec
+
+
+
+
+TTL_TYPING = 30
+TTL_RECORDING = 30
+TTL_VIEWER = 40
+TTL_CHATTING = 120
+TTL_COMMUNITY_ONLINE = 300
+ 
