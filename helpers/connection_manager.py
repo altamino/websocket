@@ -2,19 +2,22 @@ import asyncio
 import json
 from typing import Dict, List, Optional
 
-
 from helpers.database.redis import get as get_redis
 from fastapi import WebSocket
 from redis import asyncio as aioredis
+from starlette.websockets import WebSocketState
 
 from .config import Config
 
+PING_INTERVAL = 30
+PING_TIMEOUT  = 10 
 
 class ConnectionManager:
     CHANNEL_CMD = "ws:commands"
 
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
+        self._ping_tasks: Dict[WebSocket, asyncio.Task] = {}
 
         self.pubsub_redis = None
         self.pubsub = None
@@ -40,11 +43,43 @@ class ConnectionManager:
         if uid not in self.active_connections:
             self.active_connections[uid] = []
         self.active_connections[uid].append(websocket)
+        task = asyncio.create_task(self._ping_loop(websocket, uid))
+        self._ping_tasks[websocket] = task
 
     def disconnect(self, websocket: WebSocket, uid: str):
-        self.active_connections[uid].remove(websocket)
-        if not self.active_connections[uid]:
+        task = self._ping_tasks.pop(websocket, None)
+        if task:
+            task.cancel()
+
+        conns = self.active_connections.get(uid)
+        if conns is None:
+            return
+        try:
+            conns.remove(websocket)
+        except ValueError:
+            pass
+        if not conns:
             del self.active_connections[uid]
+
+    async def _ping_loop(self, websocket: WebSocket, uid: str):
+        try:
+            while True:
+                await asyncio.sleep(PING_INTERVAL)
+                if websocket.client_state != WebSocketState.CONNECTED:
+                    break
+                try:
+                    await asyncio.wait_for(
+                        websocket.send_json({"t": "ping"}),
+                        timeout=PING_TIMEOUT,
+                    )
+                except (asyncio.TimeoutError, Exception):
+                    try:
+                        await websocket.close(code=1001)
+                    except Exception:
+                        pass
+                    break
+        except asyncio.CancelledError:
+            pass
 
     async def answer(self, message: dict, websocket: WebSocket):
         await websocket.send_json(message)
@@ -52,25 +87,26 @@ class ConnectionManager:
     async def _local_broadcast(self, message: dict):
         for connections in self.active_connections.values():
             for connection in connections:
-                await connection.send_json(message)
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    pass
 
     async def _local_selective_broadcast(self, message: dict, uids: List[str]):
         tasks = []
         for uid in uids:
-            if uid in self.active_connections.keys():
+            if uid in self.active_connections:
                 for connection in self.active_connections[uid]:
                     tasks.append(connection.send_json(message))
         if tasks:
-            await asyncio.gather(*tasks)
-
-
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _connect_pubsub(self):
         self.pubsub_redis = aioredis.from_url(
             Config.REDIS_CONNECTION_STRING,
             decode_responses=True,
-            socket_timeout=None,   
-            socket_connect_timeout=5, 
+            socket_timeout=None,
+            socket_connect_timeout=5,
             health_check_interval=25,
             retry_on_timeout=True,
         )
@@ -103,7 +139,6 @@ class ConnectionManager:
         async for raw in self.pubsub.listen():
             if raw["type"] != "message":
                 continue
-
             try:
                 cmd = json.loads(raw["data"])
             except (TypeError, ValueError):
@@ -119,14 +154,7 @@ class ConnectionManager:
                 await self._local_broadcast(message)
 
 
-
-
-
 async def broadcast_ws_message(message: dict, uids: Optional[List[str]] = None):
-    """
-    uids=None -> for all users
-    uids=[...] -> for selected
-    """
     redis = get_redis()
     payload = {"message": message}
     if uids is not None:

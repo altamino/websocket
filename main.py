@@ -32,23 +32,22 @@ async def websocket_endpoint(ws: WebSocket):
         return
 
     await manager.connect(ws, uid)
-
     try:
         while True:
-            try:data = await ws.receive_json()
+            try:
+                data = await ws.receive_json()
             except Exception as e:
-                print(f"failed recive json: {e}")
-                break
+                print(f"failed receive json: {e}")
+                break  # соединение мертво — выходим, finally сделает disconnect
+
             if data.get("t") and data.get("o"):
                 try:
                     await handle_message(data, manager, uid, admin, ws)
                 except Exception as e:
-                    print(e)
-            continue
+                    print(f"handle_message error: {e}")
     except WebSocketDisconnect:
         pass
     except Exception as e:
         print(f"WebSocket error: {e}")
-        await ws.close(code=1011, reason="Internal Server Error")
     finally:
         manager.disconnect(ws, uid)
