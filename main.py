@@ -4,8 +4,10 @@ from helpers.middleware import CheckRequest
 from objects.errors import Errors
 from handlers import handle_message
 from helpers.connection_manager import ConnectionManager
+import helpers.connection_manager as _cm_module
 
 manager = ConnectionManager()
+_cm_module._manager_ref = manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

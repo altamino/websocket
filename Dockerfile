@@ -18,5 +18,6 @@ RUN mkdir -p /home/appuser/.cache/uv && \
 USER 1000
 
 ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081", "--ws-ping-interval", "300", "--ws-ping-timeout", "300"]

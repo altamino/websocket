@@ -1,162 +1,121 @@
+from fastapi import WebSocket
+from typing import List, Dict, Optional, Set
 import asyncio
 import json
-from typing import Dict, List, Optional
 
 from helpers.database.redis import get as get_redis
-from fastapi import WebSocket
-from redis import asyncio as aioredis
-from starlette.websockets import WebSocketState
 
-from .config import Config
 
-PING_INTERVAL = 30
-PING_TIMEOUT  = 10 
 
 class ConnectionManager:
-    CHANNEL_CMD = "ws:commands"
-
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
-        self._ping_tasks: Dict[WebSocket, asyncio.Task] = {}
-
-        self.pubsub_redis = None
-        self.pubsub = None
-        self._listener_task: Optional[asyncio.Task] = None
-        self._stopping = False
-
-    async def start(self):
-        self._stopping = False
-        self._listener_task = asyncio.create_task(self._listen_forever())
-
-    async def stop(self):
-        self._stopping = True
-        if self._listener_task:
-            self._listener_task.cancel()
-        if self.pubsub:
-            await self.pubsub.unsubscribe()
-            await self.pubsub.close()
-        if self.pubsub_redis:
-            await self.pubsub_redis.close()
+        # thread_id -> set of uids subscribed to that thread
+        self.thread_subscribers: Dict[str, Set[str]] = {}
+        # thread_id -> list of active voice-channel members {uid, joinRole, channelUid}
+        self.channel_members: Dict[str, List[dict]] = {}
+        # thread_id -> active channelType (1=voice, 4=video, 5=screenroom); absent means no live
+        self.channel_types: Dict[str, int] = {}
 
     async def connect(self, websocket: WebSocket, uid: str):
         await websocket.accept()
         if uid not in self.active_connections:
             self.active_connections[uid] = []
         self.active_connections[uid].append(websocket)
-        task = asyncio.create_task(self._ping_loop(websocket, uid))
-        self._ping_tasks[websocket] = task
 
     def disconnect(self, websocket: WebSocket, uid: str):
-        task = self._ping_tasks.pop(websocket, None)
-        if task:
-            task.cancel()
-
-        conns = self.active_connections.get(uid)
-        if conns is None:
-            return
-        try:
-            conns.remove(websocket)
-        except ValueError:
-            pass
-        if not conns:
+        self.active_connections[uid].remove(websocket)
+        if not self.active_connections[uid]:
             del self.active_connections[uid]
+        # Remove uid from all thread subscriptions if no more connections
+        if uid not in self.active_connections:
+            for subs in self.thread_subscribers.values():
+                subs.discard(uid)
+            # Remove from voice channel members too
+            for members in self.channel_members.values():
+                members[:] = [m for m in members if m["uid"] != uid]
 
-    async def _ping_loop(self, websocket: WebSocket, uid: str):
-        try:
-            while True:
-                await asyncio.sleep(PING_INTERVAL)
-                if websocket.client_state != WebSocketState.CONNECTED:
-                    break
-                try:
-                    await asyncio.wait_for(
-                        websocket.send_json({"t": "ping"}),
-                        timeout=PING_TIMEOUT,
-                    )
-                except (asyncio.TimeoutError, Exception):
-                    try:
-                        await websocket.close(code=1001)
-                    except Exception:
-                        pass
-                    break
-        except asyncio.CancelledError:
-            pass
+    def subscribe_thread(self, uid: str, thread_id: str):
+        if thread_id not in self.thread_subscribers:
+            self.thread_subscribers[thread_id] = set()
+        self.thread_subscribers[thread_id].add(uid)
+
+    def unsubscribe_thread(self, uid: str, thread_id: str):
+        if thread_id in self.thread_subscribers:
+            self.thread_subscribers[thread_id].discard(uid)
+
+    def add_channel_member(self, thread_id: str, uid: str, join_role: int = 1, channel_uid: int = 0):
+        if thread_id not in self.channel_members:
+            self.channel_members[thread_id] = []
+        # Remove any existing entry for this uid first
+        self.channel_members[thread_id] = [m for m in self.channel_members[thread_id] if m["uid"] != uid]
+        self.channel_members[thread_id].append({"uid": uid, "joinRole": join_role, "channelUid": channel_uid})
+
+    def remove_channel_member(self, thread_id: str, uid: str):
+        if thread_id in self.channel_members:
+            self.channel_members[thread_id] = [m for m in self.channel_members[thread_id] if m["uid"] != uid]
+            if not self.channel_members[thread_id]:
+                del self.channel_members[thread_id]
+
+    def clear_channel_members(self, thread_id: str):
+        self.channel_members.pop(thread_id, None)
+        self.channel_types.pop(thread_id, None)
+
+    def get_channel_members(self, thread_id: str) -> List[dict]:
+        return list(self.channel_members.get(thread_id, []))
+
+    def set_channel_type(self, thread_id: str, channel_type: int):
+        if channel_type:
+            self.channel_types[thread_id] = channel_type
+        else:
+            self.channel_types.pop(thread_id, None)
+
+    def get_channel_type(self, thread_id: str) -> int:
+        return self.channel_types.get(thread_id, 0)
 
     async def answer(self, message: dict, websocket: WebSocket):
         await websocket.send_json(message)
 
-    async def _local_broadcast(self, message: dict):
-        for connections in self.active_connections.values():
-            for connection in connections:
-                try:
-                    await connection.send_json(message)
-                except Exception:
-                    pass
+    async def start(self):
+        pass  # no-op; kept for compatibility with main.py lifespan
 
-    async def _local_selective_broadcast(self, message: dict, uids: List[str]):
+    async def stop(self):
+        pass  # no-op
+
+    async def broadcast_to_thread(self, thread_id: str, message: dict, exclude_uid: str = None):
+        uids = self.thread_subscribers.get(thread_id, set())
         tasks = []
         for uid in uids:
-            if uid in self.active_connections:
-                for connection in self.active_connections[uid]:
-                    tasks.append(connection.send_json(message))
+            if uid == exclude_uid:
+                continue
+            for conn in self.active_connections.get(uid, []):
+                tasks.append(conn.send_json(message))
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _connect_pubsub(self):
-        self.pubsub_redis = aioredis.from_url(
-            Config.REDIS_CONNECTION_STRING,
-            decode_responses=True,
-            socket_timeout=None,
-            socket_connect_timeout=5,
-            health_check_interval=25,
-            retry_on_timeout=True,
-        )
-        self.pubsub = self.pubsub_redis.pubsub()
-        await self.pubsub.subscribe(self.CHANNEL_CMD)
+    async def selective_broadcast(self, message: dict, uids: List[str]):
+        tasks = []
+        for uid in uids:
+            for conn in self.active_connections.get(uid, []):
+                tasks.append(conn.send_json(message))
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _listen_forever(self):
-        backoff = 1
-        while not self._stopping:
-            try:
-                await self._connect_pubsub()
-                print("redis pub/sub connected")
-                backoff = 1
-                await self._listen()
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                print(f"[WS listener error] {e!r}, reconnecting in {backoff}s")
-                try:
-                    if self.pubsub:
-                        await self.pubsub.close()
-                    if self.pubsub_redis:
-                        await self.pubsub_redis.close()
-                except Exception:
-                    pass
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 30)
 
-    async def _listen(self):
-        async for raw in self.pubsub.listen():
-            if raw["type"] != "message":
-                continue
-            try:
-                cmd = json.loads(raw["data"])
-            except (TypeError, ValueError):
-                print("decode error")
-                continue
-
-            message = cmd.get("message")
-            uids = cmd.get("uids")
-
-            if uids:
-                await self._local_selective_broadcast(message, uids)
-            else:
-                await self._local_broadcast(message)
-
+# Module-level helper used by handlers/chat.py (mirrors the Redis-based version
+# in the upstream but falls back to a direct broadcast via the singleton manager).
+_manager_ref: Optional["ConnectionManager"] = None
 
 async def broadcast_ws_message(message: dict, uids: Optional[List[str]] = None):
-    redis = get_redis()
-    payload = {"message": message}
+    """Send a WS message to specific uids (or all if uids is None)."""
+    if _manager_ref is None:
+        return
     if uids is not None:
-        payload["uids"] = uids
-    await redis.publish(ConnectionManager.CHANNEL_CMD, json.dumps(payload))
+        await _manager_ref.selective_broadcast(message, uids)
+    else:
+        for connections in _manager_ref.active_connections.values():
+            for conn in connections:
+                try:
+                    await conn.send_json(message)
+                except Exception:
+                    pass

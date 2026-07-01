@@ -12,6 +12,7 @@ dependencies = [
     "redis>=7.4.0",
     "uvicorn[standard]>=0.42.0",
     "websockets>=16.0",
+    "agora-token-builder>=1.0.0",
 ]
 
 [dependency-groups]
