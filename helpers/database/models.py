@@ -55,6 +55,7 @@ class Global:
         extensions = Dict(load_default={}, allow_none=True)
         status = Integer(load_default=0)
         coins = Float(load_default=0.00)
+        lastDailyClaimDate = String(load_default=None)
         isPaidSubscriber = Bool(load_default=False)
         createdTime = String(load_default=dttmn)
         modifiedTime = String(load_default=dttmn)
