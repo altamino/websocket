@@ -139,15 +139,16 @@ class PushEvents:
         )
 
     @staticmethod
-    def push_chat_message(ndc_id, thread_id, author: dict, msg_type=0):
-        """18 — новое сообщение в чате. Внимание: клиент (ChatPushNotificationVavle)
-        фильтрует по threadId и времени прочтения, шлётся для нотификации в шторке."""
+    def push_chat_message(ndc_id, thread_id, author: dict, content: str, msg_type=0):
+        nick = author.get("nickname")
         return PushEvents._base(
             18, ndc_id,
+            message=content,
+            title=nick,
             tid=thread_id,
             uid=author.get("uid"),
             userProfile=author,
-            nickname=author.get("nickname"),
+            nickname=nick,
             threadTime=_now_iso(),
             msgType=msg_type,
         )

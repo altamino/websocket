@@ -19,6 +19,7 @@ def handle_api_message(
 			message["ndcId"],
 			message["threadId"],
 			message["author"],
+			message["content"],
 			message["messageType"]
 		)
 
