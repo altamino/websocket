@@ -1,5 +1,3 @@
-from helpers.connection_manager import ConnectionManager
-
 import uuid
 import time
 from datetime import datetime, timezone
