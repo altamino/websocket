@@ -104,23 +104,30 @@ class BrowsingEvents:
 
 class PushEvents:
     @staticmethod
-    def _base(notif_type: int, ndc_id: int, **fields) -> dict:
+    def _base(notif_type, ndc_id, message=None, title=None, badge=0, **fields):
         payload = {
             "notifType": notif_type,
             "id": str(uuid.uuid4()),
             "ndcId": ndc_id,
             "ts": _now_iso(),
+            "aps": {
+                "badge": badge,
+                "message": message or "",
+                "sound": "default",
+                "title": title or "",
+            },
         }
         payload.update({k: v for k, v in fields.items() if v is not None})
-        return {"t": WS_NOTIFICATION_MESSAGE, "o": {"payload": payload}}
+        return {"t": 10, "o": {"payload": payload}}
 
 
     # ---------- ЧАТ (подтверждено по коду для 21) ----------
     @staticmethod
-    def push_chat_invite(ndc_id, thread_id, inviter: dict, thread_type=1):
-        """21 — приглашение в тред."""
+    def push_chat_invite(ndc_id, thread_id, inviter, thread_type=1):
         return PushEvents._base(
             21, ndc_id,
+            message=f"{inviter.get('nickname', "User")} invited you to a chat",
+            title="Chat invite",
             tid=thread_id,
             uid=inviter.get("uid"),
             userProfile=inviter,
