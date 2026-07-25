@@ -2,7 +2,9 @@ import asyncio
 import json
 from typing import Dict, List, Optional
 
+from handlers.handle_api import handle_api_message
 from helpers.database.redis import get as get_redis
+from objects.api_broadcast_types import ApiBroadcastType
 from fastapi import WebSocket
 from redis import asyncio as aioredis
 from starlette.websockets import WebSocketState
@@ -146,12 +148,17 @@ class ConnectionManager:
                 continue
 
             message = cmd.get("message")
-            uids = cmd.get("uids")
+            uids = cmd.get("uids", [])
+            t = cmd.get("type", 0)
 
-            if uids:
-                await self._local_selective_broadcast(message, uids)
-            else:
-                await self._local_broadcast(message)
+
+            payload = message if t == ApiBroadcastType.RawSend else handle_api_message(t, message)
+
+            if payload:
+                if uids:
+                    await self._local_selective_broadcast(payload, uids)
+                else:
+                    await self._local_broadcast(payload)
 
 
 async def broadcast_ws_message(message: dict, uids: Optional[List[str]] = None):

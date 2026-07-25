@@ -1,5 +1,15 @@
 from helpers.connection_manager import ConnectionManager
 
+import uuid
+import time
+from datetime import datetime, timezone
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+
 from random import randint
 
 
@@ -92,3 +102,118 @@ class ChatEvents:
 
 class BrowsingEvents:
     pass
+
+
+class PushEvents:
+    @staticmethod
+    def _base(notif_type: int, ndc_id: int, **fields) -> dict:
+        payload = {
+            "notifType": notif_type,
+            "id": str(uuid.uuid4()),
+            "ndcId": ndc_id,
+            "ts": _now_iso(),
+        }
+        payload.update({k: v for k, v in fields.items() if v is not None})
+        return {"t": WS_NOTIFICATION_MESSAGE, "o": {"payload": payload}}
+
+
+    # ---------- ЧАТ (подтверждено по коду для 21) ----------
+    @staticmethod
+    def push_chat_invite(ndc_id, thread_id, inviter: dict, thread_type=1):
+        """21 — приглашение в тред."""
+        return PushEvents._base(
+            21, ndc_id,
+            tid=thread_id,
+            uid=inviter.get("uid"),
+            userProfile=inviter,
+            nickname=inviter.get("nickname"),
+            picUrl=inviter.get("icon"),
+            picType=1,
+            ttype=thread_type,
+            exp=int(time.time() * 1000) + 86_400_000,
+        )
+
+    @staticmethod
+    def push_chat_message(ndc_id, thread_id, author: dict, msg_type=0):
+        """18 — новое сообщение в чате. Внимание: клиент (ChatPushNotificationVavle)
+        фильтрует по threadId и времени прочтения, шлётся для нотификации в шторке."""
+        return PushEvents._base(
+            18, ndc_id,
+            tid=thread_id,
+            uid=author.get("uid"),
+            userProfile=author,
+            nickname=author.get("nickname"),
+            threadTime=_now_iso(),
+            msgType=msg_type,
+        )
+
+    @staticmethod
+    def push_chat_typing(ndc_id, thread_id, user: dict):
+        """19 — печатает."""
+        return PushEvents._base(19, ndc_id, tid=thread_id, uid=user.get("uid"), userProfile=user)
+
+    @staticmethod
+    def push_chat_user_observing(ndc_id, thread_id, user: dict):
+        """20 — юзер смотрит тред."""
+        return PushEvents._base(20, ndc_id, tid=thread_id, uid=user.get("uid"), userProfile=user)
+
+    @staticmethod
+    def push_join_request_received(ndc_id, thread_id, requester: dict):
+        """22 — хосту: запрос на вступление."""
+        return PushEvents._base(
+            22, ndc_id, tid=thread_id,
+            uid=requester.get("uid"), userProfile=requester,
+            nickname=requester.get("nickname"),
+        )
+
+    @staticmethod
+    def push_join_request_approved(ndc_id, thread_id, approver: dict):
+        """23 — запрос вступить одобрен."""
+        return PushEvents._base(
+            23, ndc_id, tid=thread_id,
+            uid=approver.get("uid"), userProfile=approver,
+        )
+
+    @staticmethod
+    def push_chat_add_cohost(ndc_id, thread_id, actor: dict):
+        """67 — назначен ко-хостом."""
+        return PushEvents._base(67, ndc_id, tid=thread_id, uid=actor.get("uid"), userProfile=actor)
+
+    @staticmethod
+    def push_chat_remove_cohost(ndc_id, thread_id, actor: dict):
+        """68 — снят с ко-хоста."""
+        return PushEvents._base(68, ndc_id, tid=thread_id, uid=actor.get("uid"), userProfile=actor)
+
+
+    # ---------- КОНТЕНТ / СОЦИАЛ ----------
+    @staticmethod
+    def push_comment(ndc_id, from_user: dict, url: str, msg_type=0):
+        """3 — коммент."""
+        return PushEvents._base(3, ndc_id, uid=from_user.get("uid"), userProfile=from_user,
+                    nickname=from_user.get("nickname"), u=url, msgType=msg_type)
+
+    @staticmethod
+    def push_reply(ndc_id, from_user: dict, url: str):
+        """7 — ответ на коммент."""
+        return PushEvents._base(7, ndc_id, uid=from_user.get("uid"), userProfile=from_user,
+                    nickname=from_user.get("nickname"), u=url)
+
+    @staticmethod
+    def push_vote_up(ndc_id, from_user: dict, url: str):
+        """9 — лайк."""
+        return PushEvents._base(9, ndc_id, uid=from_user.get("uid"), userProfile=from_user,
+                    nickname=from_user.get("nickname"), u=url)
+
+    @staticmethod
+    def push_repost(ndc_id, from_user: dict, url: str):
+        """11 — репост."""
+        return PushEvents._base(11, ndc_id, uid=from_user.get("uid"), userProfile=from_user,
+                    nickname=from_user.get("nickname"), u=url)
+
+
+    # ---------- МЕМБЕРШИП ----------
+    @staticmethod
+    def push_user_membership(ndc_id, from_user: dict):
+        """1 — фолловер."""
+        return PushEvents._base(1, ndc_id, uid=from_user.get("uid"), userProfile=from_user,
+                    nickname=from_user.get("nickname"))
