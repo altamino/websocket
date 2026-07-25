@@ -222,3 +222,10 @@ class PushEvents:
         """1 — фолловер."""
         return PushEvents._base(1, ndc_id, uid=from_user.get("uid"), userProfile=from_user,
                     nickname=from_user.get("nickname"))
+
+
+    @staticmethod
+    def push_new_community_user(ndc_id, from_user: dict):
+        """custom for bots."""
+        return PushEvents._base(30002, ndc_id, uid=from_user.get("uid"), userProfile=from_user,
+                    nickname=from_user.get("nickname"))
