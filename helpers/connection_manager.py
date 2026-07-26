@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 from handlers.handle_api import handle_api_message
 from helpers.database.redis import get as get_redis
 from objects.api_broadcast_types import ApiBroadcastType
+from helpers.wsobjs import WSObjects
 from fastapi import WebSocket
 from redis import asyncio as aioredis
 from starlette.websockets import WebSocketState
@@ -71,7 +72,7 @@ class ConnectionManager:
                     break
                 try:
                     await asyncio.wait_for(
-                        websocket.send_json({"t": "ping"}),
+                        websocket.send_json(WSObjects.Pong()),
                         timeout=PING_TIMEOUT,
                     )
                 except (asyncio.TimeoutError, Exception):
