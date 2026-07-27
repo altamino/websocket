@@ -14,6 +14,7 @@ from .config import Config
 
 PING_INTERVAL = 30
 PING_TIMEOUT  = 10 
+BROADCAST_ALL = "to-everyone"
 
 class ConnectionManager:
     CHANNEL_CMD = "ws:commands"
@@ -149,17 +150,19 @@ class ConnectionManager:
                 continue
 
             message = cmd.get("message")
-            uids = cmd.get("uids", [])
+            uids = cmd.get("uids")
             t = cmd.get("type", 0)
 
 
             payload = message if t == ApiBroadcastType.RawSend else handle_api_message(t, message)
 
             if payload:
-                if uids:
+                if uids == BROADCAST_ALL:
+                    await self._local_broadcast(payload)
+                elif isinstance(uids, list) and uids:
                     await self._local_selective_broadcast(payload, uids)
                 else:
-                    await self._local_broadcast(payload)
+                    print("No broadcast targets")
 
 
 async def broadcast_ws_message(message: dict, uids: Optional[List[str]] = None):

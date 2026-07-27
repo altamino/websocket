@@ -94,11 +94,12 @@ async def on_chat_voice_recording(uid: str, chatId: str, ndcId: int, manager: Co
     uids     = await _redis_set_members(_key_recording(ndcId, chatId))
     profiles  = await _get_profiles(ndcId, uids)
     viewers   = await _redis_set_members(_key_viewers(ndcId, chatId))
- 
-    await broadcast_ws_message(
-        ChatEvents.recording_start(chatId, ndcId, profiles),
-        uids=viewers or None,
-    )
+
+    if viewers:
+        await broadcast_ws_message(
+            ChatEvents.recording_start(chatId, ndcId, profiles),
+            uids=viewers or None,
+        )
  
  
 async def on_chat_voice_recording_end(uid: str, chatId: str, ndcId: int, manager: ConnectionManager):
@@ -108,11 +109,12 @@ async def on_chat_voice_recording_end(uid: str, chatId: str, ndcId: int, manager
     uids     = await _redis_set_members(_key_recording(ndcId, chatId))
     profiles  = await _get_profiles(ndcId, uids)
     viewers   = await _redis_set_members(_key_viewers(ndcId, chatId))
- 
-    await broadcast_ws_message(
-        ChatEvents.recording_end(chatId, ndcId, profiles),
-        uids=viewers or None,
-    )
+
+    if viewers:
+        await broadcast_ws_message(
+            ChatEvents.recording_end(chatId, ndcId, profiles),
+            uids=viewers,
+        )
  
  
 async def on_chat_message_typing(uid: str, chatId: str, ndcId: int, manager: ConnectionManager):
@@ -137,12 +139,12 @@ async def on_chat_message_typing_end(uid: str, chatId: str, ndcId: int, manager:
     uids     = await _redis_set_members(_key_typing(ndcId, chatId))
     profiles  = await _get_profiles(ndcId, uids)
     viewers   = await _redis_set_members(_key_viewers(ndcId, chatId))
- 
-    await broadcast_ws_message(
-        ChatEvents.typing_end(chatId, ndcId, profiles),
-        uids=viewers or None,
-    )
- 
+    if viewers:
+        await broadcast_ws_message(
+            ChatEvents.typing_end(chatId, ndcId, profiles),
+            uids=viewers,
+        )
+    
  
 
 async def on_chat_screen_open(uid: str, chatId: str, ndcId: int, manager: ConnectionManager):
@@ -166,7 +168,6 @@ async def on_chat_screen_close(uid: str, chatId: str, ndcId: int, manager: Conne
 
  
 async def on_chatting(uid: str, chatId: str, ndcId: int, manager: ConnectionManager):
-    """Экран снова активен — продлеваем присутствие."""
     await _refresh_chatting(uid, chatId, ndcId)
     redis = get_redis()
     if await redis.sismember(_key_viewers(ndcId, chatId), uid):
