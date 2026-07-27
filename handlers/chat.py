@@ -8,6 +8,7 @@ from objects.user import User
 from datetime import datetime
 from helpers.connection_manager import broadcast_ws_message
 from helpers.database.redis import get as get_redis
+from objects.ws_events import PushEvents
 
 
 def _key_typing(ndcId: int, chatId: str)    -> str: return f"x{ndcId}:chat:{chatId}:typing"
@@ -121,11 +122,19 @@ async def on_chat_message_typing(uid: str, chatId: str, ndcId: int, manager: Con
     uids     = await _redis_set_members(_key_typing(ndcId, chatId))
     profiles  = await _get_profiles(ndcId, uids)
     viewers   = await _redis_set_members(_key_viewers(ndcId, chatId))
- 
+
+    """
     await broadcast_ws_message(
         ChatEvents.typing_start(chatId, ndcId, profiles),
         uids=viewers or None,
     )
+    """
+
+    for user in profiles:
+        await broadcast_ws_message(
+            PushEvents.push_chat_typing(ndcId, chatId, user),
+            viewers or None
+        )
  
  
 async def on_chat_message_typing_end(uid: str, chatId: str, ndcId: int, manager: ConnectionManager):
