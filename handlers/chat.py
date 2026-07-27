@@ -123,17 +123,10 @@ async def on_chat_message_typing(uid: str, chatId: str, ndcId: int, manager: Con
     profiles  = await _get_profiles(ndcId, uids)
     viewers   = await _redis_set_members(_key_viewers(ndcId, chatId))
 
-    """
-    await broadcast_ws_message(
-        ChatEvents.typing_start(chatId, ndcId, profiles),
-        uids=viewers or None,
-    )
-    """
-
-    for user in profiles:
+    if viewers:
         await broadcast_ws_message(
-            PushEvents.push_chat_typing(ndcId, chatId, user),
-            viewers or None
+            ChatEvents.typing_start(chatId, ndcId, profiles),
+            uids=viewers,
         )
  
  
