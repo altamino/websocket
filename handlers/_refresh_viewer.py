@@ -5,6 +5,7 @@ from helpers.constants import TTL_VIEWER
 def _key_viewers(ndcId: int, chatId: str) -> str:
     return f"x{ndcId}:chat:{chatId}:viewers"
 
+
 def _key_user_chats(uid: str) -> str:
     return f"user:{uid}:viewing"
 

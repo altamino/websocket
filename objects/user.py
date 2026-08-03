@@ -46,7 +46,7 @@ class User:
                 "backgroundColor": row.get("backgroundColor"),
                 "style": {
                     "backgroundColor": row.get("backgroundColor"),
-                    "backgroundMediaList": []
+                    "backgroundMediaList": [],
                 },
                 "isMemberOfTeamAmino": row.get("isTeamMember", False),
             }

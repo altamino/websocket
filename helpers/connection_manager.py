@@ -13,8 +13,9 @@ from starlette.websockets import WebSocketState
 from .config import Config
 
 PING_INTERVAL = 30
-PING_TIMEOUT  = 10 
+PING_TIMEOUT = 10
 BROADCAST_ALL = "to-everyone"
+
 
 class ConnectionManager:
     CHANNEL_CMD = "ws:commands"
@@ -153,8 +154,11 @@ class ConnectionManager:
             uids = cmd.get("uids")
             t = cmd.get("type", 0)
 
-
-            payload = message if t == ApiBroadcastType.RawSend else handle_api_message(t, message)
+            payload = (
+                message
+                if t == ApiBroadcastType.RawSend
+                else handle_api_message(t, message)
+            )
 
             if payload:
                 if uids == BROADCAST_ALL:
