@@ -94,3 +94,6 @@ async def handle_message(
 
         elif actions == [ACTION_BROWSING]:  # TODO
             pass
+
+    
+        await manager.answer(WSObjects.UniversalMessage("OK"), ws) #i think it's must fix error notification on client side
