@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from handlers.handle_api import handle_api_message
 from helpers.database.redis import get as get_redis
@@ -23,6 +23,11 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
         self._ping_tasks: Dict[WebSocket, asyncio.Task] = {}
+        self.thread_subscribers: Dict[str, Set[str]] = {}
+        self.channel_members: Dict[str, List[dict]] = {}
+        self.channel_types: Dict[str, int] = {}
+        self.thread_ndc_ids: Dict[str, int] = {}
+        self.user_busy_threads: Dict[str, str] = {}
 
         self.pubsub_redis = None
         self.pubsub = None
@@ -65,23 +70,115 @@ class ConnectionManager:
             pass
         if not conns:
             del self.active_connections[uid]
+        if uid not in self.active_connections:
+            for subs in self.thread_subscribers.values():
+                subs.discard(uid)
+            for members in self.channel_members.values():
+                members[:] = [m for m in members if m["uid"] != uid]
+            self.user_busy_threads.pop(uid, None)
+
+    def subscribe_thread(self, uid: str, thread_id: str):
+        if thread_id not in self.thread_subscribers:
+            self.thread_subscribers[thread_id] = set()
+        self.thread_subscribers[thread_id].add(uid)
+
+    def unsubscribe_thread(self, uid: str, thread_id: str):
+        if thread_id in self.thread_subscribers:
+            self.thread_subscribers[thread_id].discard(uid)
+
+    def set_thread_ndc(self, thread_id: str, ndc_id: int):
+        if ndc_id:
+            self.thread_ndc_ids[thread_id] = ndc_id
+
+    def add_channel_member(
+        self,
+        thread_id: str,
+        uid: str,
+        join_role: int = 1,
+        channel_uid: int = 0,
+        ndc_id: int | None = None,
+    ):
+        if ndc_id:
+            self.set_thread_ndc(thread_id, ndc_id)
+        if thread_id not in self.channel_members:
+            self.channel_members[thread_id] = []
+        self.channel_members[thread_id] = [
+            m for m in self.channel_members[thread_id] if m["uid"] != uid
+        ]
+        self.channel_members[thread_id].append(
+            {"uid": uid, "joinRole": join_role, "channelUid": channel_uid}
+        )
+
+    def remove_channel_member(self, thread_id: str, uid: str):
+        if thread_id in self.channel_members:
+            self.channel_members[thread_id] = [
+                m for m in self.channel_members[thread_id] if m["uid"] != uid
+            ]
+            if not self.channel_members[thread_id]:
+                del self.channel_members[thread_id]
+
+    def clear_channel_members(self, thread_id: str):
+        self.channel_members.pop(thread_id, None)
+        self.channel_types.pop(thread_id, None)
+        self.thread_ndc_ids.pop(thread_id, None)
+
+    def get_user_channel_infos(self, uid: str) -> list[dict]:
+        infos: list[dict] = []
+        for thread_id, members in self.channel_members.items():
+            for member in members:
+                if member["uid"] != uid:
+                    continue
+                infos.append(
+                    {
+                        "ndcId": self.thread_ndc_ids.get(thread_id, 0),
+                        "threadId": thread_id,
+                        "uid": uid,
+                        "joinRole": member["joinRole"],
+                    }
+                )
+                break
+        return infos
+
+    def get_channel_members(self, thread_id: str) -> List[dict]:
+        return list(self.channel_members.get(thread_id, []))
+
+    def set_channel_type(self, thread_id: str, channel_type: int):
+        if channel_type:
+            self.channel_types[thread_id] = channel_type
+        else:
+            self.channel_types.pop(thread_id, None)
+
+    def get_channel_type(self, thread_id: str) -> int:
+        return self.channel_types.get(thread_id, 0)
+
+    def mark_user_busy(self, uid: str, thread_id: str):
+        self.user_busy_threads[uid] = thread_id
+
+    def clear_user_busy(self, uid: str):
+        self.user_busy_threads.pop(uid, None)
+
+    def is_user_busy(self, uid: str) -> bool:
+        return uid in self.user_busy_threads
+
+    async def broadcast_to_thread(
+        self, thread_id: str, message: dict, exclude_uid: str | None = None
+    ):
+        uids = self.thread_subscribers.get(thread_id, set())
+        targets = [uid for uid in uids if uid != exclude_uid]
+        if targets:
+            await self._local_selective_broadcast(message, targets)
+
+    async def selective_broadcast(self, message: dict, uids: List[str]):
+        await self._local_selective_broadcast(message, uids)
 
     async def _ping_loop(self, websocket: WebSocket, uid: str):
+        # Keep the task alive for lifecycle symmetry only.
+        # Do NOT send t:117 here — an empty threadChannelUserInfoList makes
+        # the client call exitLiveChannel() for every active call channel.
         try:
             while True:
                 await asyncio.sleep(PING_INTERVAL)
                 if websocket.client_state != WebSocketState.CONNECTED:
-                    break
-                try:
-                    await asyncio.wait_for(
-                        websocket.send_json(WSObjects.Pong()),
-                        timeout=PING_TIMEOUT,
-                    )
-                except (asyncio.TimeoutError, Exception):
-                    try:
-                        await websocket.close(code=1001)
-                    except Exception:
-                        pass
                     break
         except asyncio.CancelledError:
             pass
