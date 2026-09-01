@@ -12,8 +12,8 @@ from random import randint
 
 from helpers.constants import (
     WS_TYPE_CHAT_MESSAGE,
-    WS_ACTION_END,
-    WS_ACTION_START,
+    WS_SERV_ACTION_END as WS_ACTION_END,
+    WS_SERV_ACTION_START as WS_ACTION_START,
     WS_NOTIFICATION_MESSAGE,
     ACTION_RECORDING,
     ACTION_TYPING,
@@ -21,6 +21,7 @@ from helpers.constants import (
 )
 
 
+c
 class ChatEvents:
     @staticmethod
     def new_message(
@@ -51,10 +52,15 @@ class ChatEvents:
         }
 
     @staticmethod
+    def _ndtopic(ndcId: int, topic: str) -> str:
+        prefix = "ndtopic:g:" if ndcId == 0 else f"ndtopic:x{ndcId}:"
+        return prefix + topic
+
+    @staticmethod
     def _send_topic(ndcId: int, topic: str, userProfileList: list) -> dict:
         return {
             "ndcId": ndcId,
-            "topic": topic,
+            "topic": ChatEvents._ndtopic(ndcId, topic),
             "userProfileCount": len(userProfileList),
             "userProfileList": userProfileList,
         }
