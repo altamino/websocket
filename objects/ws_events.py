@@ -21,7 +21,7 @@ from helpers.constants import (
 )
 
 
-c
+
 class ChatEvents:
     @staticmethod
     def new_message(
