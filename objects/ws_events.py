@@ -12,8 +12,8 @@ from random import randint
 
 from helpers.constants import (
     WS_TYPE_CHAT_MESSAGE,
-    WS_ACTION_END,
-    WS_ACTION_START,
+    WS_SERV_ACTION_END as WS_ACTION_END,
+    WS_SERV_ACTION_START as WS_ACTION_START,
     WS_NOTIFICATION_MESSAGE,
     ACTION_RECORDING,
     ACTION_TYPING,
