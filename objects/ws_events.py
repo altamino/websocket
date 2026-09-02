@@ -12,8 +12,7 @@ from random import randint
 
 from helpers.constants import (
     WS_TYPE_CHAT_MESSAGE,
-    WS_TYPING_TYPE,
-    WS_RECORDING_TYPE,
+    WS_ANSWER_TYPE,
     WS_NOTIFICATION_MESSAGE,
     ACTION_RECORDING,
     ACTION_TYPING,
@@ -68,7 +67,7 @@ class ChatEvents:
     @staticmethod
     def typing_start(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
-            "t": WS_TYPING_TYPE,
+            "t": WS_ANSWER_TYPE,
             "o": ChatEvents._send_topic(
                 ndcId, f"users-start-typing-at:{chatId}", userProfileList
             ),
@@ -77,7 +76,7 @@ class ChatEvents:
     @staticmethod
     def typing_end(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
-            "t": WS_TYPING_TYPE,
+            "t": WS_ANSWER_TYPE,
             "o": ChatEvents._send_topic(
                 ndcId, f"users-end-typing-at:{chatId}", userProfileList
             ),
@@ -86,7 +85,7 @@ class ChatEvents:
     @staticmethod
     def recording_start(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
-            "t": WS_RECORDING_TYPE,
+            "t": WS_ANSWER_TYPE,
             "o": ChatEvents._send_topic(
                 ndcId, f"users-start-recording-at:{chatId}", userProfileList
             ),
@@ -95,7 +94,7 @@ class ChatEvents:
     @staticmethod
     def recording_end(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
-            "t": WS_RECORDING_TYPE,
+            "t": WS_ANSWER_TYPE,
             "o": ChatEvents._send_topic(
                 ndcId, f"users-end-recording-at:{chatId}", userProfileList
             ),
