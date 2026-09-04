@@ -2,19 +2,17 @@ from helpers.database.redis import get as get_redis
 from helpers.constants import TTL_COMMUNITY_ONLINE
 
 
-
 def parse_browsing_target(target: str) -> tuple[str, str | None]:
     # ndc://x3/featured -> ("featured", None)
     # ndc://x3/blog/{uuid} -> ("blog", uuid)
-    # ndc://x3/public-chats -> ("public-chats", None)
-    # ndc://x3/user-profile/{uuid} -> ("user-profile", uuid)
-    path = target.split("/", 3)[-1]  # after ndc://x{ndcId}/
-    parts = path.split("/", 1)
-    kind = parts[0]
-    target_id = parts[1] if len(parts) > 1 else None
+    # ndc://x3/ -> ("root", None)
+    path = target.split("://", 1)[-1]        # "x3/blog/uuid"
+    segments = [s for s in path.split("/")[1:] if s]
+    if not segments:
+        return "root", None
+    kind = segments[0]
+    target_id = segments[1] if len(segments) > 1 else None
     return kind, target_id
-
-
 
 
 def _key_browsing(ndcId: str, kind: str, target_id: str, uid: str) -> str:

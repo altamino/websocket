@@ -82,7 +82,7 @@ async def handle_message(
         elif actions == [ACTION_CHATTING] and target:
             await on_chatting(uid, target, ndcId, manager)
 
-    elif actions == [ACTION_BROWSING] and target:
+    elif actions == [ACTION_BROWSING] and target and t == WS_ACTION_START:
         kind, target_id = parse_browsing_target(target)
         print(f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}")
         await on_browsing_start(uid, ndcId, kind, target_id)
@@ -95,7 +95,7 @@ async def handle_message(
         elif actions == [ACTION_CHATTING] and target:
             await on_chatting_end(uid, target, ndcId, manager)
 
-    elif actions == [ACTION_BROWSING] and target:
+    elif actions == [ACTION_BROWSING] and target and t == WS_ACTION_END:
         kind, target_id = parse_browsing_target(target)
         print(f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}")
         await on_browsing_end(uid, ndcId, kind, target_id)
