@@ -28,11 +28,13 @@ def _pattern_browsing(ndcId: str, kind: str, target_id: str) -> str:
 async def on_browsing_start(uid: str, ndcId: str, kind: str, target_id: str | None):
     redis = get_redis()
     key = _key_browsing(ndcId, kind, target_id or "-", uid)
+    print(f"Browsing start: {key}")
     await redis.set(key, "1", ex=TTL_COMMUNITY_ONLINE)
 
 
 async def on_browsing_end(uid: str, ndcId: str, kind: str, target_id: str | None):
     redis = get_redis()
+    print(f"Browsing end: {_key_browsing(ndcId, kind, target_id or '-', uid)}")
     await redis.delete(_key_browsing(ndcId, kind, target_id or "-", uid))
 
 

@@ -84,6 +84,7 @@ async def handle_message(
 
     elif actions == [ACTION_BROWSING] and target:
         kind, target_id = parse_browsing_target(target)
+        print(f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}")
         await on_browsing_start(uid, ndcId, kind, target_id)
 
     elif t == WS_ACTION_END and actions:
@@ -96,4 +97,5 @@ async def handle_message(
 
     elif actions == [ACTION_BROWSING] and target:
         kind, target_id = parse_browsing_target(target)
+        print(f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}")
         await on_browsing_end(uid, ndcId, kind, target_id)
