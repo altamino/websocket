@@ -55,6 +55,7 @@ async def handle_message(
     ndcId: int = o.get("ndcId")
     chatId: str = o.get("threadId")
     target: str = o.get("target", "").split("/")[-1]
+    raw_target: str = o.get("target", "")
     actions: list = o.get("actions")
 
     if ndcId:
@@ -82,8 +83,8 @@ async def handle_message(
         elif actions == [ACTION_CHATTING] and target:
             await on_chatting(uid, target, ndcId, manager)
 
-        elif actions == [ACTION_BROWSING] and target:
-            kind, target_id = parse_browsing_target(target)
+        elif actions == [ACTION_BROWSING] and raw_target:
+            kind, target_id = parse_browsing_target(raw_target)
             print(f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}")
             await on_browsing_start(uid, ndcId, kind, target_id)
 
@@ -95,7 +96,7 @@ async def handle_message(
         elif actions == [ACTION_CHATTING] and target:
             await on_chatting_end(uid, target, ndcId, manager)
 
-        elif actions == [ACTION_BROWSING] and target:
-            kind, target_id = parse_browsing_target(target)
+        elif actions == [ACTION_BROWSING] and raw_target:
+            kind, target_id = parse_browsing_target(raw_target)
             print(f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}")
             await on_browsing_end(uid, ndcId, kind, target_id)
