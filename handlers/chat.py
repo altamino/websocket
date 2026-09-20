@@ -141,19 +141,18 @@ async def on_chat_message_typing(
             uids=viewers,
         )
 
-
 async def on_chat_message_typing_end(
     uid: str, chatId: str, ndcId: int, manager: ConnectionManager
 ):
     await _redis_set_remove(_key_typing(ndcId, chatId), uid)
     await _refresh_chatting(uid, chatId, ndcId)
 
-    uids = await _redis_set_members(_key_typing(ndcId, chatId))
-    profiles = await _get_profiles(ndcId, uids)
+    ending_profiles = await _get_profiles(ndcId, [uid])
     viewers = await _redis_set_members(_key_viewers(ndcId, chatId))
-    if viewers:
+
+    if viewers and ending_profiles:
         await broadcast_ws_message(
-            ChatEvents.typing_end(chatId, ndcId, profiles),
+            ChatEvents.typing_end(chatId, ndcId, ending_profiles),
             uids=viewers,
         )
 

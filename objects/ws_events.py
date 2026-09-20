@@ -12,13 +12,13 @@ from random import randint
 
 from helpers.constants import (
     WS_TYPE_CHAT_MESSAGE,
-    WS_ACTION_END,
-    WS_ACTION_START,
+    WS_ANSWER_TYPE,
     WS_NOTIFICATION_MESSAGE,
     ACTION_RECORDING,
     ACTION_TYPING,
     NOTIFICATION_TYPE_NEW_MESSAGE,
 )
+
 
 
 class ChatEvents:
@@ -51,10 +51,15 @@ class ChatEvents:
         }
 
     @staticmethod
+    def _ndtopic(ndcId: int, topic: str) -> str:
+        prefix = "ndtopic:g:" if ndcId == 0 else f"ndtopic:x{ndcId}:"
+        return prefix + topic
+
+    @staticmethod
     def _send_topic(ndcId: int, topic: str, userProfileList: list) -> dict:
         return {
             "ndcId": ndcId,
-            "topic": topic,
+            "topic": ChatEvents._ndtopic(ndcId, topic),
             "userProfileCount": len(userProfileList),
             "userProfileList": userProfileList,
         }
@@ -62,7 +67,7 @@ class ChatEvents:
     @staticmethod
     def typing_start(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
-            "t": WS_ACTION_START,
+            "t": WS_ANSWER_TYPE,
             "o": ChatEvents._send_topic(
                 ndcId, f"users-start-typing-at:{chatId}", userProfileList
             ),
@@ -71,7 +76,7 @@ class ChatEvents:
     @staticmethod
     def typing_end(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
-            "t": WS_ACTION_END,
+            "t": WS_ANSWER_TYPE,
             "o": ChatEvents._send_topic(
                 ndcId, f"users-end-typing-at:{chatId}", userProfileList
             ),
@@ -80,7 +85,7 @@ class ChatEvents:
     @staticmethod
     def recording_start(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
-            "t": WS_ACTION_START,
+            "t": WS_ANSWER_TYPE,
             "o": ChatEvents._send_topic(
                 ndcId, f"users-start-recording-at:{chatId}", userProfileList
             ),
@@ -89,7 +94,7 @@ class ChatEvents:
     @staticmethod
     def recording_end(chatId: str, ndcId: int, userProfileList: list) -> dict:
         return {
-            "t": WS_ACTION_END,
+            "t": WS_ANSWER_TYPE,
             "o": ChatEvents._send_topic(
                 ndcId, f"users-end-recording-at:{chatId}", userProfileList
             ),

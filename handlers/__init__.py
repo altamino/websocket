@@ -41,6 +41,7 @@ from .call import (
 from ._refresh_viewer import refresh_user_viewing
 
 from .community import on_ws_ndc_event
+from .browsing import on_browsing_start, on_browsing_end, parse_browsing_target
 
 
 async def handle_message(
@@ -67,8 +68,10 @@ async def handle_message(
 
     ndcId: int = o.get("ndcId")
     chatId: str = o.get("threadId")
+
+    target: str = o.get("target", "").split("/")[-1]
+    raw_target: str = o.get("target", "")
     ws_req_id = o.get("id")
-    targetChatId: str = o.get("target", "").split("/")[-1]
     actions: list = o.get("actions")
 
     if ndcId:
@@ -107,23 +110,27 @@ async def handle_message(
         await on_get_agora(uid, ndcId, chatId, ws_req_id, manager, ws)
 
     elif t == WS_ACTION_START and actions:
-        if actions == [ACTION_RECORDING] and targetChatId:
-            await on_chat_voice_recording(uid, targetChatId, ndcId, manager)
-        elif actions == [ACTION_TYPING] and targetChatId:
-            await on_chat_message_typing(uid, targetChatId, ndcId, manager)
-        elif actions == [ACTION_CHATTING] and targetChatId:
-            await on_chatting(uid, targetChatId, ndcId, manager)
+        if actions == [ACTION_RECORDING] and target:
+            await on_chat_voice_recording(uid, target, ndcId, manager)
+        elif actions == [ACTION_TYPING] and target:
+            await on_chat_message_typing(uid, target, ndcId, manager)
+        elif actions == [ACTION_CHATTING] and target:
+            await on_chatting(uid, target, ndcId, manager)
 
-        elif actions == [ACTION_BROWSING]:  # TODO
-            pass
+        elif actions == [ACTION_BROWSING] and raw_target:
+            kind, target_id = parse_browsing_target(raw_target)
+            print(f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}")
+            await on_browsing_start(uid, ndcId, kind, target_id)
 
     elif t == WS_ACTION_END and actions:
-        if actions == [ACTION_RECORDING] and targetChatId:
-            await on_chat_voice_recording_end(uid, targetChatId, ndcId, manager)
-        elif actions == [ACTION_TYPING] and targetChatId:
-            await on_chat_message_typing_end(uid, targetChatId, ndcId, manager)
-        elif actions == [ACTION_CHATTING] and targetChatId:
-            await on_chatting_end(uid, targetChatId, ndcId, manager)
+        if actions == [ACTION_RECORDING] and target:
+            await on_chat_voice_recording_end(uid, target, ndcId, manager)
+        elif actions == [ACTION_TYPING] and target:
+            await on_chat_message_typing_end(uid, target, ndcId, manager)
+        elif actions == [ACTION_CHATTING] and target:
+            await on_chatting_end(uid, target, ndcId, manager)
 
-        elif actions == [ACTION_BROWSING]:  # TODO
-            pass
+        elif actions == [ACTION_BROWSING] and raw_target:
+            kind, target_id = parse_browsing_target(raw_target)
+            print(f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}")
+            await on_browsing_end(uid, ndcId, kind, target_id)
