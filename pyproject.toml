@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "agora-token-builder>=1.0.0",
     "fastapi>=0.135.2",
     "marshmallow<4.0",
     "motor>=3.7.1",

@@ -42,3 +42,6 @@ class Config:
     WS_ADMIN_VERIFY = environ.get("WS_ADMIN_VERIFY")
 
     PASSWORD_SALT = environ.get("PASSWORD_SALT")
+
+    AGORA_APP_ID = environ.get("AGORA_APP_ID", "")
+    AGORA_APP_CERTIFICATE = environ.get("AGORA_APP_CERTIFICATE", "")
