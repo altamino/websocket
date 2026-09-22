@@ -1,5 +1,4 @@
 FROM astral/uv:python3.14-alpine AS base
-LABEL build_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 
 WORKDIR /app
 
