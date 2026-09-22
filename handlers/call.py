@@ -24,14 +24,15 @@ def _get_user_profile(uid: str, users_db, ndcId):
 	
 def _member_payload(member: dict, users_db, ndcId=0) -> dict:
 	safe_uid = member["channelUid"] % 2000000000
-	return {
+	data =  {
 		"channelUid": safe_uid,
 		"joinRole": member["joinRole"],
 		"isHost": member["joinRole"] == 1,
 		"isOffline": False,
 		"userProfile": _get_user_profile(member["uid"], users_db, ndcId),
 	}
-}
+	print(f"member_payload_data:\n{data}\n\n-----------")
+	return data
 
 
 
