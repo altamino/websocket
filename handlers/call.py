@@ -13,13 +13,16 @@ from helpers.wsobjs import WSObjects
 
 
 def _member_payload(member: dict) -> dict:
+    safe_uid = member["channelUid"] % 2000000000
     return {
-        "channelUid": member["channelUid"],
+        "channelUid": safe_uid,
         "joinRole": member["joinRole"],
         "isHost": member["joinRole"] == 1,
         "isOffline": False,
         "userProfile": {"uid": member["uid"]},
     }
+}
+
 
 
 def _user_list_payload(thread_id: str, members: list[dict]) -> dict:
