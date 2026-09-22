@@ -15,6 +15,7 @@ from helpers.wsobjs import WSObjects
 from objects.user import User
 
 
+
 @asynccontextmanager
 async def _collection(ndc_id: int, name: str):
 	db = await Database().init()
@@ -49,6 +50,13 @@ async def _get_user_profile(uid: str, users_db, ndc_id: int) -> dict:
 	if row is None:
 		return {"uid": uid}
 	return User.OwnNonSensetiveProfile(row, ndcId=ndc_id)
+
+
+async def _full_profile(ndc_id: int, uid: str) -> dict:
+	"""Fetch one user's full profile. Use this whenever a WS event needs to
+	carry a real userProfile instead of just {"uid": uid}."""
+	async with _collection(ndc_id, "Users") as users:
+		return await _get_user_profile(uid, users, ndc_id)
 
 
 async def _member_payload(member: dict, users_db, ndc_id: int) -> dict:
@@ -169,8 +177,11 @@ async def on_leave_thread(
 	manager.remove_channel_member(thread_id, uid)
 	manager.clear_user_busy(uid)
 
+	profile = await _full_profile(ndc_id, uid)
 	await manager.broadcast_to_thread(
-		thread_id, WSObjects.ChannelUserLeave(thread_id, uid), exclude_uid=uid
+		thread_id,
+		WSObjects.ChannelUserLeave(thread_id, uid, user_profile=profile),
+		exclude_uid=uid,
 	)
 
 	channel_type = await _resolve_channel_type(manager, ndc_id, thread_id)
@@ -190,14 +201,20 @@ async def on_update_role(
 ):
 	agora_uid = uid_from_uuid(uid)
 	channel_type = await _resolve_channel_type(manager, ndc_id, thread_id)
+	profile = await _full_profile(ndc_id, uid)
 
 	if join_role == 0:
 		manager.remove_channel_member(thread_id, uid)
 		manager.clear_user_busy(uid)
 
-		await manager.answer(WSObjects.LiveChatJoin(ws_req_id, ndc_id, thread_id, 0, uid, 0), ws)
+		await manager.answer(
+			WSObjects.LiveChatJoin(ws_req_id, ndc_id, thread_id, 0, uid, 0, user_profile=profile),
+			ws,
+		)
 		await manager.broadcast_to_thread(
-			thread_id, WSObjects.ChannelUserLeave(thread_id, uid), exclude_uid=uid
+			thread_id,
+			WSObjects.ChannelUserLeave(thread_id, uid, user_profile=profile),
+			exclude_uid=uid,
 		)
 		await _finish_or_broadcast(uid, ndc_id, thread_id, manager, channel_type)
 		return
@@ -212,7 +229,10 @@ async def on_update_role(
 		manager.clear_user_busy(uid)
 
 	await manager.answer(
-		WSObjects.LiveChatJoin(ws_req_id, ndc_id, thread_id, join_role, uid, agora_uid), ws
+		WSObjects.LiveChatJoin(
+			ws_req_id, ndc_id, thread_id, join_role, uid, agora_uid, user_profile=profile
+		),
+		ws,
 	)
 
 	members = manager.get_channel_members(thread_id)
@@ -223,7 +243,7 @@ async def on_update_role(
 	if join_role == 1:
 		await manager.broadcast_to_thread(
 			thread_id,
-			WSObjects.ChannelUserJoin(thread_id, uid, join_role, agora_uid),
+			WSObjects.ChannelUserJoin(thread_id, uid, join_role, agora_uid, user_profile=profile),
 			exclude_uid=uid,
 		)
 		if len(members) > 1:

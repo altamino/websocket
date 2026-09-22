@@ -74,6 +74,7 @@ class WSObjects:
         join_role: int,
         uid: str,
         channel_uid: int,
+        user_profile: dict | None = None,
     ) -> dict:
         return {
             "t": 113,
@@ -86,14 +87,18 @@ class WSObjects:
                     "channelUid": channel_uid if join_role else 0,
                     "isHost": join_role == 1,
                     "isOffline": join_role == 0,
-                    "userProfile": {"uid": uid},
+                    "userProfile": user_profile or {"uid": uid},
                 },
             },
         }
 
     @staticmethod
     def ChannelUserJoin(
-        thread_id: str, user_uid: str, join_role: int, channel_uid: int
+        thread_id: str,
+        user_uid: str,
+        join_role: int,
+        channel_uid: int,
+        user_profile: dict | None = None,
     ) -> dict:
         return {
             "t": 106,
@@ -104,13 +109,17 @@ class WSObjects:
                     "isHost": join_role == 1,
                     "isOffline": False,
                     "joinRole": join_role,
-                    "userProfile": {"uid": user_uid},
+                    "userProfile": user_profile or {"uid": user_uid},
                 },
             },
         }
 
     @staticmethod
-    def ChannelUserLeave(thread_id: str, user_uid: str) -> dict:
+    def ChannelUserLeave(
+        thread_id: str,
+        user_uid: str,
+        user_profile: dict | None = None,
+    ) -> dict:
         return {
             "t": 107,
             "o": {
@@ -119,7 +128,7 @@ class WSObjects:
                     "channelUid": 0,
                     "isOffline": True,
                     "joinRole": 0,
-                    "userProfile": {"uid": user_uid},
+                    "userProfile": user_profile or {"uid": user_uid},
                 },
             },
         }
