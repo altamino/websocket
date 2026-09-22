@@ -22,7 +22,7 @@ def _get_user_profile(uid: str, users_db, ndcId):
 					ndcId=ndcId,
 				)
 	
-def _member_payload(member: dict, users_db, ndcId=0) -> dict:
+async def _member_payload(member: dict, users_db, ndcId=0) -> dict:
 	safe_uid = member["channelUid"] % 2000000000
 	data =  {
 		"channelUid": safe_uid,
@@ -31,12 +31,12 @@ def _member_payload(member: dict, users_db, ndcId=0) -> dict:
 		"isOffline": False,
 		"userProfile": _get_user_profile(member["uid"], users_db, ndcId),
 	}
-	print(f"member_payload_data:\n{data}\n\n-----------")
+	print("member_payload_data:\n{data}\n\n-----------")
 	return data
 
 
 
-def _user_list_payload(thread_id: str, members: list[dict], ndcId) -> dict:
+async def _user_list_payload(thread_id: str, members: list[dict], ndcId) -> dict:
 	db = await Database().init()
 	try:
 		users = await db.get(f"x{ndcId}", "Users")
@@ -48,7 +48,7 @@ def _user_list_payload(thread_id: str, members: list[dict], ndcId) -> dict:
 			"t": 102,
 			"o": {
 				"threadId": thread_id,
-				"userList": [_member_payload(m, users, ndcId=ndcId) for m in members],
+				"userList": [await _member_payload(m, users, ndcId=ndcId) for m in members],
 			},
 		}
 	finally:
@@ -96,7 +96,7 @@ async def _finish_channel(
 
 	channel_end = WSObjects.ChannelTypeUpdate(thread_id, 0, status=0)
 	force_quit = WSObjects.ChannelForceQuit(thread_id)
-	await manager.broadcast_to_thread(thread_id, _user_list_payload(thread_id, [], ndc_id))
+	await manager.broadcast_to_thread(thread_id, await _user_list_payload(thread_id, [], ndc_id))
 	await manager.broadcast_to_thread(thread_id, channel_end)
 	await manager.broadcast_to_thread(thread_id, force_quit)
 
@@ -135,7 +135,7 @@ async def on_join_thread(
 
 	members = manager.get_channel_members(thread_id)
 	if members:
-		await manager.answer(_user_list_payload(thread_id, members, ndc_id), ws)
+		await manager.answer(await _user_list_payload(thread_id, members, ndc_id), ws)
 
 	active_channel_type = manager.get_channel_type(thread_id)
 	if not active_channel_type and members:
@@ -182,7 +182,7 @@ async def on_leave_thread(
 		)
 	elif remaining:
 		await manager.broadcast_to_thread(
-			thread_id, _user_list_payload(thread_id, remaining, ndc_id)
+			thread_id, await _user_list_payload(thread_id, remaining, ndc_id)
 		)
 
 	await manager.answer({"t": 104, "o": {"id": ws_req_id, "ndcId": ndc_id}}, ws)
@@ -228,7 +228,7 @@ async def on_update_role(
 			)
 		elif remaining:
 			await manager.broadcast_to_thread(
-				thread_id, _user_list_payload(thread_id, remaining, ndc_id)
+				thread_id, await _user_list_payload(thread_id, remaining, ndc_id)
 			)
 		return
 
@@ -266,9 +266,9 @@ async def on_update_role(
 			exclude_uid=uid,
 		)
 		if len(members) > 1:
-			await manager.broadcast_to_thread(thread_id, _user_list_payload(thread_id, members, ndc_id))
+			await manager.broadcast_to_thread(thread_id, await _user_list_payload(thread_id, members, ndc_id))
 	else:
-		await manager.broadcast_to_thread(thread_id, _user_list_payload(thread_id, members, ndc_id))
+		await manager.broadcast_to_thread(thread_id, await _user_list_payload(thread_id, members, ndc_id))
 
 
 async def on_fetch_channel_users(
