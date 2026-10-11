@@ -45,3 +45,4 @@ class Config:
 
     AGORA_APP_ID = environ.get("AGORA_APP_ID", "")
     AGORA_APP_CERTIFICATE = environ.get("AGORA_APP_CERTIFICATE", "")
+    AGORA_ADMIN_ONLY_MODE = environ.get("AGORA_ADMIN_ONLY_MODE", "0") == "1"

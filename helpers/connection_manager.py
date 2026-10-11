@@ -1,5 +1,7 @@
 import asyncio
 import json
+import time
+import uuid
 from typing import Dict, List, Optional, Set
 
 from handlers.handle_api import handle_api_message
@@ -15,6 +17,11 @@ from .config import Config
 PING_INTERVAL = 30
 PING_TIMEOUT = 10
 BROADCAST_ALL = "to-everyone"
+
+PRESENCE_KEY = "ws:connected"
+PRESENCE_TTL = 90
+PRESENCE_REFRESH = 30
+PRESENCE_CHUNK = 1000
 
 
 class ConnectionManager:
@@ -34,12 +41,20 @@ class ConnectionManager:
         self._listener_task: Optional[asyncio.Task] = None
         self._stopping = False
 
+        self.worker_id = uuid.uuid4().hex[:12]
+        self._presence_task: Optional[asyncio.Task] = None
+        self._bg_tasks: Set[asyncio.Task] = set()
+
     async def start(self):
         self._stopping = False
         self._listener_task = asyncio.create_task(self._listen_forever())
+        self._presence_task = asyncio.create_task(self._presence_loop())
 
     async def stop(self):
         self._stopping = True
+        if self._presence_task:
+            self._presence_task.cancel()
+        await self._presence_clear_all()
         if self._listener_task:
             self._listener_task.cancel()
         if self.pubsub:
@@ -48,13 +63,76 @@ class ConnectionManager:
         if self.pubsub_redis:
             await self.pubsub_redis.close()
 
+
+    def _presence_member(self, uid: str) -> str:
+        return f"{uid}:{self.worker_id}"
+
+    async def _presence_add(self, uid: str):
+        try:
+            await get_redis().zadd(
+                PRESENCE_KEY,
+                {self._presence_member(uid): time.time() + PRESENCE_TTL},
+            )
+        except Exception as e:
+            print(f"[presence] add error: {e!r}")
+
+    async def _presence_remove(self, uid: str):
+        if uid in self.active_connections:
+            return
+        try:
+            await get_redis().zrem(PRESENCE_KEY, self._presence_member(uid))
+        except Exception as e:
+            print(f"[presence] remove error: {e!r}")
+
+    async def _presence_refresh(self):
+        uids = list(self.active_connections.keys())
+        redis = get_redis()
+        expire = time.time() + PRESENCE_TTL
+        for i in range(0, len(uids), PRESENCE_CHUNK):
+            chunk = uids[i : i + PRESENCE_CHUNK]
+            await redis.zadd(
+                PRESENCE_KEY, {self._presence_member(u): expire for u in chunk}
+            )
+        # чистим записи упавших воркеров
+        await redis.zremrangebyscore(PRESENCE_KEY, "-inf", time.time())
+
+    async def _presence_loop(self):
+        while not self._stopping:
+            try:
+                await asyncio.sleep(PRESENCE_REFRESH)
+                await self._presence_refresh()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print(f"[presence] refresh error: {e!r}")
+
+    async def _presence_clear_all(self):
+        uids = list(self.active_connections.keys())
+        if not uids:
+            return
+        try:
+            await get_redis().zrem(
+                PRESENCE_KEY, *[self._presence_member(u) for u in uids]
+            )
+        except Exception as e:
+            print(f"[presence] clear error: {e!r}")
+
+    def _spawn(self, coro):
+        task = asyncio.create_task(coro)
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
+
+
     async def connect(self, websocket: WebSocket, uid: str):
         await websocket.accept()
-        if uid not in self.active_connections:
+        first_connection = uid not in self.active_connections
+        if first_connection:
             self.active_connections[uid] = []
         self.active_connections[uid].append(websocket)
         task = asyncio.create_task(self._ping_loop(websocket, uid))
         self._ping_tasks[websocket] = task
+        if first_connection:
+            await self._presence_add(uid)
 
     def disconnect(self, websocket: WebSocket, uid: str):
         task = self._ping_tasks.pop(websocket, None)
@@ -76,6 +154,10 @@ class ConnectionManager:
             for members in self.channel_members.values():
                 members[:] = [m for m in members if m["uid"] != uid]
             self.user_busy_threads.pop(uid, None)
+            try:
+                self._spawn(self._presence_remove(uid))
+            except RuntimeError:
+                pass 
 
     def subscribe_thread(self, uid: str, thread_id: str):
         if thread_id not in self.thread_subscribers:
