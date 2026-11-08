@@ -1,3 +1,4 @@
+from helpers.native_access import NativeError
 from helpers.connection_manager import ConnectionManager
 from helpers.validator import is_valid_id
 from helpers.wsobjs import WSObjects
@@ -44,12 +45,11 @@ from .community import on_ws_ndc_event
 from .browsing import on_browsing_start, on_browsing_end, parse_browsing_target
 
 
-async def handle_message(
+async def _handle_legacy_message(
     data: dict, manager: ConnectionManager, uid: str, isAdmin: bool, ws
 ):
     t: dict = data.get("t")
     o: dict = data.get("o")
-    print(data)
     if t is None or o is None:
         return
 
@@ -119,7 +119,9 @@ async def handle_message(
 
         elif actions == [ACTION_BROWSING] and raw_target:
             kind, target_id = parse_browsing_target(raw_target)
-            print(f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}")
+            print(
+                f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}"
+            )
             await on_browsing_start(uid, ndcId, kind, target_id)
 
     elif t == WS_ACTION_END and actions:
@@ -132,5 +134,30 @@ async def handle_message(
 
         elif actions == [ACTION_BROWSING] and raw_target:
             kind, target_id = parse_browsing_target(raw_target)
-            print(f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}")
+            print(
+                f"[browsing] uid={uid} ndcId={ndcId} kind={kind} target_id={target_id}"
+            )
             await on_browsing_end(uid, ndcId, kind, target_id)
+
+
+async def handle_message(data, manager, uid, isAdmin, ws):
+    try:
+        async with manager.extensions.frame(data, uid, ws):
+            if not await manager.extensions.handle(data, uid, ws):
+                await _handle_legacy_message(data, manager, uid, isAdmin, ws)
+                await manager.extensions.after_legacy(data, uid, ws)
+    except NativeError as error:
+        obj = data.get("o", {}) if isinstance(data, dict) else {}
+        request_id = obj.get("id") if isinstance(obj, dict) else None
+        await manager.answer(
+            {
+                "t": 1,
+                "o": {
+                    "id": request_id,
+                    "code": error.code,
+                    "message": str(error),
+                    "exception": {"code": error.code, "message": str(error)},
+                },
+            },
+            ws,
+        )

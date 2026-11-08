@@ -1,11 +1,12 @@
+from helpers.agora import ROLE_SUBSCRIBER
 from contextlib import asynccontextmanager
 
 from helpers.agora import (
-	DEFAULT_TOKEN_EXPIRE_SECONDS,
-	ROLE_PUBLISHER,
-	build_rtc_token,
-	channel_name,
-	uid_from_uuid,
+    DEFAULT_TOKEN_EXPIRE_SECONDS,
+    ROLE_PUBLISHER,
+    build_rtc_token,
+    channel_name,
+    uid_from_uuid,
 )
 from helpers.channel_messages import emit_channel_ended, emit_channel_started
 from helpers.config import Config
@@ -15,349 +16,399 @@ from helpers.wsobjs import WSObjects
 from objects.user import User
 
 
-
 @asynccontextmanager
 async def _collection(ndc_id: int, name: str):
-	db = await Database().init()
-	try:
-		yield await db.get(f"x{ndc_id}", name)
-	finally:
-		await db.close()
+    db = await Database().init()
+    try:
+        yield await db.get(f"x{ndc_id}", name)
+    finally:
+        await db.close()
 
 
 async def _chat_channel_type_from_db(ndc_id: int, thread_id: str) -> int:
-	try:
-		async with _collection(ndc_id, "Chats") as chats:
-			chat_info = await chats.find_one({"id": thread_id}, {"channelType": 1}) or {}
-			return chat_info.get("channelType", 0)
-	except Exception:
-		return 0
+    try:
+        async with _collection(ndc_id, "Chats") as chats:
+            chat_info = (
+                await chats.find_one({"id": thread_id}, {"channelType": 1}) or {}
+            )
+            return chat_info.get("channelType", 0)
+    except Exception:
+        return 0
 
 
 async def _other_chat_members(ndc_id: int, thread_id: str, uid: str) -> list[str]:
-	try:
-		async with _collection(ndc_id, "Chats") as chats:
-			chat_info = await chats.find_one({"id": thread_id}) or {}
-	except Exception:
-		return []
-	members = chat_info.get("memberList", []) + chat_info.get("invitedList", [])
-	return [m for m in members if m != uid]
-
+    try:
+        async with _collection(ndc_id, "Chats") as chats:
+            chat_info = await chats.find_one({"id": thread_id}) or {}
+    except Exception:
+        return []
+    members = chat_info.get("memberList", []) + chat_info.get("invitedList", [])
+    return [m for m in members if m != uid]
 
 
 async def _get_user_profile(uid: str, users_db, ndc_id: int) -> dict:
-	row = await users_db.find_one({"id": uid})
-	if row is None:
-		return {"uid": uid}
-	return User.OwnNonSensetiveProfile(row, ndcId=ndc_id)
+    row = await users_db.find_one({"id": uid})
+    if row is None:
+        return {"uid": uid}
+    return User.OwnNonSensetiveProfile(row, ndcId=ndc_id)
 
 
 async def _full_profile(ndc_id: int, uid: str) -> dict:
-	"""Fetch one user's full profile. Use this whenever a WS event needs to
-	carry a real userProfile instead of just {"uid": uid}."""
-	async with _collection(ndc_id, "Users") as users:
-		return await _get_user_profile(uid, users, ndc_id)
+    """Fetch one user's full profile. Use this whenever a WS event needs to
+    carry a real userProfile instead of just {"uid": uid}."""
+    async with _collection(ndc_id, "Users") as users:
+        return await _get_user_profile(uid, users, ndc_id)
 
 
 async def _member_payload(member: dict, users_db, ndc_id: int) -> dict:
-	return {
-		"channelUid": member["channelUid"] % 2000000000,
-		"joinRole": member["joinRole"],
-		"isHost": member["joinRole"] == 1,
-		"isOffline": False,
-		"userProfile": await _get_user_profile(member["uid"], users_db, ndc_id),
-	}
+    return {
+        "channelUid": member["channelUid"] % 2000000000,
+        "joinRole": member["joinRole"],
+        "isHost": member["joinRole"] == 1,
+        "isOffline": False,
+        "userProfile": await _get_user_profile(member["uid"], users_db, ndc_id),
+    }
 
 
 async def _user_list_payload(thread_id: str, members: list[dict], ndc_id: int) -> dict:
-	async with _collection(ndc_id, "Users") as users:
-		return {
-			"t": 102,
-			"o": {
-				"threadId": thread_id,
-				"userList": [await _member_payload(m, users, ndc_id) for m in members],
-			},
-		}
+    async with _collection(ndc_id, "Users") as users:
+        return {
+            "t": 102,
+            "o": {
+                "threadId": thread_id,
+                "userList": [await _member_payload(m, users, ndc_id) for m in members],
+            },
+        }
 
 
 def _has_presenter(members: list[dict]) -> bool:
-	return any(m["joinRole"] == 1 for m in members)
+    return any(m["joinRole"] == 1 for m in members)
 
 
 def _should_finish_channel(members: list[dict], channel_type: int) -> bool:
-	if not channel_type:
-		return False
-	return not members or not _has_presenter(members)
+    if not channel_type:
+        return False
+    return not members or not _has_presenter(members)
 
 
-async def _resolve_channel_type(manager: ConnectionManager, ndc_id: int, thread_id: str) -> int:
-	channel_type = manager.get_channel_type(thread_id)
-	if not channel_type:
-		channel_type = await _chat_channel_type_from_db(ndc_id, thread_id)
-	return channel_type
+async def _resolve_channel_type(
+    manager: ConnectionManager, ndc_id: int, thread_id: str
+) -> int:
+    channel_type = manager.get_channel_type(thread_id)
+    if not channel_type:
+        channel_type = await _chat_channel_type_from_db(ndc_id, thread_id)
+    return channel_type
 
 
 async def _finish_channel(
-	uid: str,
-	ndc_id: int,
-	thread_id: str,
-	manager: ConnectionManager,
-	ended_channel_type: int | None = None,
+    uid: str,
+    ndc_id: int,
+    thread_id: str,
+    manager: ConnectionManager,
+    ended_channel_type: int | None = None,
 ):
-	if not ended_channel_type:
-		ended_channel_type = await _resolve_channel_type(manager, ndc_id, thread_id)
+    if not ended_channel_type:
+        ended_channel_type = await _resolve_channel_type(manager, ndc_id, thread_id)
 
-	manager.clear_channel_members(thread_id)
+    # Close the native room while its local role/channel are still active.
+    # Reason 99 means private-call quota to the client; 6 means no presenter.
+    await manager.broadcast_to_thread(
+        thread_id, WSObjects.ChannelForceQuit(thread_id, reason=6)
+    )
+    manager.clear_channel_members(thread_id)
 
-	await manager.broadcast_to_thread(thread_id, await _user_list_payload(thread_id, [], ndc_id))
-	await manager.broadcast_to_thread(thread_id, WSObjects.ChannelTypeUpdate(thread_id, 0, status=0))
-	await manager.broadcast_to_thread(thread_id, WSObjects.ChannelForceQuit(thread_id))
+    await manager.broadcast_to_thread(
+        thread_id, await _user_list_payload(thread_id, [], ndc_id)
+    )
+    await manager.broadcast_to_thread(
+        thread_id, WSObjects.ChannelTypeUpdate(thread_id, 0, status=0)
+    )
 
-	if ended_channel_type:
-		await emit_channel_ended(ndc_id, thread_id, uid, ended_channel_type)
+    if ended_channel_type:
+        await emit_channel_ended(ndc_id, thread_id, uid, ended_channel_type)
 
 
 async def _finish_or_broadcast(
-	uid: str,
-	ndc_id: int,
-	thread_id: str,
-	manager: ConnectionManager,
-	channel_type: int,
+    uid: str,
+    ndc_id: int,
+    thread_id: str,
+    manager: ConnectionManager,
+    channel_type: int,
 ) -> bool:
-	remaining = manager.get_channel_members(thread_id)
+    remaining = manager.get_channel_members(thread_id)
 
-	if _should_finish_channel(remaining, channel_type):
-		await _finish_channel(uid, ndc_id, thread_id, manager, ended_channel_type=channel_type)
-		return True
+    if _should_finish_channel(remaining, channel_type):
+        await _finish_channel(
+            uid, ndc_id, thread_id, manager, ended_channel_type=channel_type
+        )
+        return True
 
-	if remaining:
-		await manager.broadcast_to_thread(thread_id, await _user_list_payload(thread_id, remaining, ndc_id))
-	return False
-
+    if remaining:
+        await manager.broadcast_to_thread(
+            thread_id, await _user_list_payload(thread_id, remaining, ndc_id)
+        )
+    return False
 
 
 async def on_join_thread(
-	uid: str,
-	ndc_id: int,
-	thread_id: str,
-	ws_req_id,
-	manager: ConnectionManager,
-	ws,
+    uid: str,
+    ndc_id: int,
+    thread_id: str,
+    ws_req_id,
+    manager: ConnectionManager,
+    ws,
 ):
-	manager.set_thread_ndc(thread_id, ndc_id)
-	manager.subscribe_thread(uid, thread_id)
-	await manager.answer(
-		{"t": 101, "o": {"id": ws_req_id, "ndcId": ndc_id, "threadId": thread_id}},
-		ws,
-	)
+    manager.set_thread_ndc(thread_id, ndc_id)
+    manager.subscribe_thread(uid, thread_id)
+    await manager.answer(
+        {"t": 101, "o": {"id": ws_req_id, "ndcId": ndc_id, "threadId": thread_id}},
+        ws,
+    )
 
-	members = manager.get_channel_members(thread_id)
-	if members:
-		await manager.answer(await _user_list_payload(thread_id, members, ndc_id), ws)
+    members = manager.get_channel_members(thread_id)
+    if members:
+        await manager.answer(await _user_list_payload(thread_id, members, ndc_id), ws)
 
-	channel_type = manager.get_channel_type(thread_id)
-	if not channel_type and members:
-		channel_type = await _chat_channel_type_from_db(ndc_id, thread_id)
-		if channel_type:
-			manager.set_channel_type(thread_id, channel_type)
+    channel_type = manager.get_channel_type(thread_id)
+    if not channel_type and members:
+        channel_type = await _chat_channel_type_from_db(ndc_id, thread_id)
+        if channel_type:
+            manager.set_channel_type(thread_id, channel_type)
 
-	if channel_type:
-		await manager.answer(WSObjects.ChannelTypeUpdate(thread_id, channel_type, status=1), ws)
+    if channel_type:
+        await manager.answer(
+            WSObjects.ChannelTypeUpdate(thread_id, channel_type, status=1), ws
+        )
 
 
 async def on_leave_thread(
-	uid: str,
-	ndc_id: int,
-	thread_id: str,
-	ws_req_id,
-	manager: ConnectionManager,
-	ws,
+    uid: str,
+    ndc_id: int,
+    thread_id: str,
+    ws_req_id,
+    manager: ConnectionManager,
+    ws,
 ):
-	manager.unsubscribe_thread(uid, thread_id)
-	manager.remove_channel_member(thread_id, uid)
-	manager.clear_user_busy(uid)
+    manager.unsubscribe_thread(uid, thread_id)
+    manager.remove_channel_member(thread_id, uid)
+    manager.clear_user_busy(uid)
 
-	profile = await _full_profile(ndc_id, uid)
-	await manager.broadcast_to_thread(
-		thread_id,
-		WSObjects.ChannelUserLeave(thread_id, uid, user_profile=profile),
-		exclude_uid=uid,
-	)
+    profile = await _full_profile(ndc_id, uid)
+    await manager.broadcast_to_thread(
+        thread_id,
+        WSObjects.ChannelUserLeave(thread_id, uid, user_profile=profile),
+        exclude_uid=uid,
+    )
 
-	channel_type = await _resolve_channel_type(manager, ndc_id, thread_id)
-	await _finish_or_broadcast(uid, ndc_id, thread_id, manager, channel_type)
+    channel_type = await _resolve_channel_type(manager, ndc_id, thread_id)
+    await _finish_or_broadcast(uid, ndc_id, thread_id, manager, channel_type)
 
-	await manager.answer({"t": 104, "o": {"id": ws_req_id, "ndcId": ndc_id}}, ws)
+    await manager.answer({"t": 104, "o": {"id": ws_req_id, "ndcId": ndc_id}}, ws)
 
 
 async def on_update_role(
-	uid: str,
-	ndc_id: int,
-	thread_id: str,
-	join_role: int,
-	ws_req_id,
-	manager: ConnectionManager,
-	ws,
+    uid: str,
+    ndc_id: int,
+    thread_id: str,
+    join_role: int,
+    ws_req_id,
+    manager: ConnectionManager,
+    ws,
 ):
-	agora_uid = uid_from_uuid(uid)
-	channel_type = await _resolve_channel_type(manager, ndc_id, thread_id)
-	profile = await _full_profile(ndc_id, uid)
+    agora_uid = uid_from_uuid(uid)
+    channel_type = await _resolve_channel_type(manager, ndc_id, thread_id)
+    profile = await _full_profile(ndc_id, uid)
 
-	if join_role == 0:
-		manager.remove_channel_member(thread_id, uid)
-		manager.clear_user_busy(uid)
+    if join_role == 0:
+        manager.remove_channel_member(thread_id, uid)
+        manager.clear_user_busy(uid)
 
-		await manager.answer(
-			WSObjects.LiveChatJoin(ws_req_id, ndc_id, thread_id, 0, uid, 0, user_profile=profile),
-			ws,
-		)
-		await manager.broadcast_to_thread(
-			thread_id,
-			WSObjects.ChannelUserLeave(thread_id, uid, user_profile=profile),
-			exclude_uid=uid,
-		)
-		await _finish_or_broadcast(uid, ndc_id, thread_id, manager, channel_type)
-		return
+        await manager.answer(
+            WSObjects.LiveChatJoin(
+                ws_req_id, ndc_id, thread_id, 0, uid, 0, user_profile=profile
+            ),
+            ws,
+        )
+        await manager.broadcast_to_thread(
+            thread_id,
+            WSObjects.ChannelUserLeave(thread_id, uid, user_profile=profile),
+            exclude_uid=uid,
+        )
+        await _finish_or_broadcast(uid, ndc_id, thread_id, manager, channel_type)
+        return
 
-	manager.set_thread_ndc(thread_id, ndc_id)
-	manager.subscribe_thread(uid, thread_id)
-	manager.add_channel_member(thread_id, uid, join_role, channel_uid=agora_uid, ndc_id=ndc_id)
+    manager.set_thread_ndc(thread_id, ndc_id)
+    manager.subscribe_thread(uid, thread_id)
+    manager.add_channel_member(
+        thread_id, uid, join_role, channel_uid=agora_uid, ndc_id=ndc_id
+    )
 
-	if join_role == 1:
-		manager.mark_user_busy(uid, thread_id)
-	else:
-		manager.clear_user_busy(uid)
+    if join_role == 1:
+        manager.mark_user_busy(uid, thread_id)
+    else:
+        manager.clear_user_busy(uid)
 
-	await manager.answer(
-		WSObjects.LiveChatJoin(
-			ws_req_id, ndc_id, thread_id, join_role, uid, agora_uid, user_profile=profile
-		),
-		ws,
-	)
+    await manager.answer(
+        WSObjects.LiveChatJoin(
+            ws_req_id,
+            ndc_id,
+            thread_id,
+            join_role,
+            uid,
+            agora_uid,
+            user_profile=profile,
+        ),
+        ws,
+    )
 
-	members = manager.get_channel_members(thread_id)
-	if _should_finish_channel(members, channel_type):
-		await _finish_channel(uid, ndc_id, thread_id, manager, ended_channel_type=channel_type)
-		return
+    members = manager.get_channel_members(thread_id)
+    if _should_finish_channel(members, channel_type):
+        await _finish_channel(
+            uid, ndc_id, thread_id, manager, ended_channel_type=channel_type
+        )
+        return
 
-	if join_role == 1:
-		await manager.broadcast_to_thread(
-			thread_id,
-			WSObjects.ChannelUserJoin(thread_id, uid, join_role, agora_uid, user_profile=profile),
-			exclude_uid=uid,
-		)
-		if len(members) > 1:
-			await manager.broadcast_to_thread(thread_id, await _user_list_payload(thread_id, members, ndc_id))
-	else:
-		await manager.broadcast_to_thread(thread_id, await _user_list_payload(thread_id, members, ndc_id))
+    if join_role == 1:
+        await manager.broadcast_to_thread(
+            thread_id,
+            WSObjects.ChannelUserJoin(
+                thread_id, uid, join_role, agora_uid, user_profile=profile
+            ),
+            exclude_uid=uid,
+        )
+        if len(members) > 1:
+            await manager.broadcast_to_thread(
+                thread_id, await _user_list_payload(thread_id, members, ndc_id)
+            )
+    else:
+        await manager.broadcast_to_thread(
+            thread_id, await _user_list_payload(thread_id, members, ndc_id)
+        )
 
 
 async def on_fetch_channel_users(
-	uid: str,
-	ndc_id: int,
-	thread_id: str,
-	ws_req_id,
-	manager: ConnectionManager,
-	ws,
+    uid: str,
+    ndc_id: int,
+    thread_id: str,
+    ws_req_id,
+    manager: ConnectionManager,
+    ws,
 ):
-	members = manager.get_channel_members(thread_id)
-	async with _collection(ndc_id, "Users") as users:
-		user_list = [await _member_payload(m, users, ndc_id) for m in members]
+    members = manager.get_channel_members(thread_id)
+    async with _collection(ndc_id, "Users") as users:
+        user_list = [await _member_payload(m, users, ndc_id) for m in members]
 
-	await manager.answer(
-		{
-			"t": 102,
-			"o": {
-				"id": ws_req_id,
-				"ndcId": ndc_id,
-				"threadId": thread_id,
-				"userList": user_list,
-			},
-		},
-		ws,
-	)
+    await manager.answer(
+        {
+            "t": 102,
+            "o": {
+                "id": ws_req_id,
+                "ndcId": ndc_id,
+                "threadId": thread_id,
+                "userList": user_list,
+            },
+        },
+        ws,
+    )
 
 
 async def on_update_channel_type(
-	uid: str,
-	ndc_id: int,
-	thread_id: str,
-	channel_type: int,
-	ws_req_id,
-	manager: ConnectionManager,
-	ws,
+    uid: str,
+    ndc_id: int,
+    thread_id: str,
+    channel_type: int,
+    ws_req_id,
+    manager: ConnectionManager,
+    ws,
 ):
-	if channel_type in (1, 3, 4, 5):
-		other_members = await _other_chat_members(ndc_id, thread_id, uid)
-		for member_uid in other_members:
-			if manager.is_user_busy(member_uid):
-				await manager.answer(
-					{
-						"t": 109,
-						"o": {
-							"id": ws_req_id,
-							"ndcId": ndc_id,
-							"exception": {"code": 111, "message": "receiver busy"},
-						},
-					},
-					ws,
-				)
-				return
+    if channel_type in (1, 3, 4, 5):
+        other_members = await _other_chat_members(ndc_id, thread_id, uid)
+        for member_uid in other_members:
+            if manager.is_user_busy(member_uid):
+                await manager.answer(
+                    {
+                        "t": 109,
+                        "o": {
+                            "id": ws_req_id,
+                            "ndcId": ndc_id,
+                            "exception": {"code": 111, "message": "receiver busy"},
+                        },
+                    },
+                    ws,
+                )
+                return
 
-	previous_type = manager.get_channel_type(thread_id)
-	channel_finished = False
+    previous_type = manager.get_channel_type(thread_id)
+    channel_finished = False
 
-	if channel_type:
-		manager.set_channel_type(thread_id, channel_type)
-		manager.mark_user_busy(uid, thread_id)
-	else:
-		ended_type = previous_type or await _chat_channel_type_from_db(ndc_id, thread_id)
-		manager.set_channel_type(thread_id, 0)
-		manager.clear_user_busy(uid)
+    if channel_type:
+        manager.set_channel_type(thread_id, channel_type)
+        manager.mark_user_busy(uid, thread_id)
+    else:
+        ended_type = previous_type or await _chat_channel_type_from_db(
+            ndc_id, thread_id
+        )
+        manager.set_channel_type(thread_id, 0)
+        manager.clear_user_busy(uid)
 
-		if ended_type:
-			channel_finished = await _finish_or_broadcast(uid, ndc_id, thread_id, manager, ended_type)
-			if not channel_finished:
-				await emit_channel_ended(ndc_id, thread_id, uid, ended_type)
+        if ended_type:
+            channel_finished = await _finish_or_broadcast(
+                uid, ndc_id, thread_id, manager, ended_type
+            )
+            if not channel_finished:
+                await emit_channel_ended(ndc_id, thread_id, uid, ended_type)
 
-	if not channel_finished:
-		await manager.broadcast_to_thread(
-			thread_id,
-			WSObjects.ChannelTypeUpdate(thread_id, channel_type, status=1 if channel_type else 0),
-			exclude_uid=uid,
-		)
+    if not channel_finished:
+        await manager.broadcast_to_thread(
+            thread_id,
+            WSObjects.ChannelTypeUpdate(
+                thread_id, channel_type, status=1 if channel_type else 0
+            ),
+            exclude_uid=uid,
+        )
 
-	await manager.answer(WSObjects.ChannelTypeResponse(ws_req_id, ndc_id, channel_type), ws)
+    await manager.answer(
+        WSObjects.ChannelTypeResponse(ws_req_id, ndc_id, channel_type), ws
+    )
 
-	if channel_type and previous_type != channel_type:
-		await emit_channel_started(ndc_id, thread_id, uid, channel_type)
+    if channel_type and previous_type != channel_type:
+        await emit_channel_started(ndc_id, thread_id, uid, channel_type)
 
 
 async def on_get_agora(
-	uid: str,
-	ndc_id: int,
-	thread_id: str,
-	ws_req_id,
-	manager: ConnectionManager,
-	ws,
+    uid: str,
+    ndc_id: int,
+    thread_id: str,
+    ws_req_id,
+    manager: ConnectionManager,
+    ws,
 ):
-	agora_uid = uid_from_uuid(uid)
-	channel = channel_name(ndc_id, thread_id)
+    agora_uid = uid_from_uuid(uid)
+    channel = channel_name(ndc_id, thread_id)
 
-	if not Config.AGORA_APP_ID or not Config.AGORA_APP_CERTIFICATE:
-		await manager.answer(WSObjects.WSError(500, "Agora not configured", ws_req_id, ndc_id), ws)
-		return
+    if not Config.AGORA_APP_ID or not Config.AGORA_APP_CERTIFICATE:
+        await manager.answer(
+            WSObjects.WSError(500, "Agora not configured", ws_req_id, ndc_id), ws
+        )
+        return
 
-	token = build_rtc_token(
-		Config.AGORA_APP_ID,
-		Config.AGORA_APP_CERTIFICATE,
-		channel,
-		agora_uid,
-		ROLE_PUBLISHER,
-		DEFAULT_TOKEN_EXPIRE_SECONDS,
-	)
+    token = build_rtc_token(
+        Config.AGORA_APP_ID,
+        Config.AGORA_APP_CERTIFICATE,
+        channel,
+        agora_uid,
+        ROLE_PUBLISHER
+        if any(
+            m["uid"] == uid and m["joinRole"] == 1
+            for m in manager.get_channel_members(thread_id)
+        )
+        else ROLE_SUBSCRIBER,
+        DEFAULT_TOKEN_EXPIRE_SECONDS,
+    )
 
-	await manager.answer(
-		WSObjects.AgoraChannel(ws_req_id, ndc_id, token, channel, agora_uid, DEFAULT_TOKEN_EXPIRE_SECONDS),
-		ws,
-	)
+    await manager.answer(
+        WSObjects.AgoraChannel(
+            ws_req_id, ndc_id, token, channel, agora_uid, DEFAULT_TOKEN_EXPIRE_SECONDS
+        ),
+        ws,
+    )

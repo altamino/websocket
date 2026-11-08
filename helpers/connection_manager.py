@@ -1,3 +1,6 @@
+from helpers.bounded_send import answer as bounded_answer
+from helpers.native_protocol import NativeProtocol
+from helpers.durable_delivery import DurableDelivery
 import asyncio
 import json
 import time
@@ -29,6 +32,10 @@ class ConnectionManager:
 
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.durable = DurableDelivery(self)
+        self.extensions = NativeProtocol(self)
+        self._send_locks = {}
+        self._pending_sends = {}
         self._ping_tasks: Dict[WebSocket, asyncio.Task] = {}
         self.thread_subscribers: Dict[str, Set[str]] = {}
         self.channel_members: Dict[str, List[dict]] = {}
@@ -47,22 +54,29 @@ class ConnectionManager:
 
     async def start(self):
         self._stopping = False
+        self.durable.start()
+        self.extensions.start()
         self._listener_task = asyncio.create_task(self._listen_forever())
         self._presence_task = asyncio.create_task(self._presence_loop())
 
     async def stop(self):
         self._stopping = True
+        await self.extensions.stop()
+        await self.durable.stop()
         if self._presence_task:
             self._presence_task.cancel()
         await self._presence_clear_all()
         if self._listener_task:
             self._listener_task.cancel()
+        await asyncio.gather(
+            *(task for task in (self._listener_task, self._presence_task) if task),
+            return_exceptions=True,
+        )
         if self.pubsub:
             await self.pubsub.unsubscribe()
             await self.pubsub.close()
         if self.pubsub_redis:
             await self.pubsub_redis.close()
-
 
     def _presence_member(self, uid: str) -> str:
         return f"{uid}:{self.worker_id}"
@@ -122,9 +136,11 @@ class ConnectionManager:
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
 
-
     async def connect(self, websocket: WebSocket, uid: str):
         await websocket.accept()
+        self._send_locks[websocket] = asyncio.Lock()
+        self.durable.connect(websocket, uid)
+        self.extensions.connect(websocket, uid)
         first_connection = uid not in self.active_connections
         if first_connection:
             self.active_connections[uid] = []
@@ -135,6 +151,10 @@ class ConnectionManager:
             await self._presence_add(uid)
 
     def disconnect(self, websocket: WebSocket, uid: str):
+        self.extensions.disconnect(websocket)
+        self.durable.disconnect(websocket)
+        self._send_locks.pop(websocket, None)
+        self._pending_sends.pop(websocket, None)
         task = self._ping_tasks.pop(websocket, None)
         if task:
             task.cancel()
@@ -157,7 +177,7 @@ class ConnectionManager:
             try:
                 self._spawn(self._presence_remove(uid))
             except RuntimeError:
-                pass 
+                pass
 
     def subscribe_thread(self, uid: str, thread_id: str):
         if thread_id not in self.thread_subscribers:
@@ -202,7 +222,7 @@ class ConnectionManager:
     def clear_channel_members(self, thread_id: str):
         self.channel_members.pop(thread_id, None)
         self.channel_types.pop(thread_id, None)
-        self.thread_ndc_ids.pop(thread_id, None)
+        # Keep the scope for the channel-ended broadcasts that follow.
 
     def get_user_channel_infos(self, uid: str) -> list[dict]:
         infos: list[dict] = []
@@ -245,10 +265,7 @@ class ConnectionManager:
     async def broadcast_to_thread(
         self, thread_id: str, message: dict, exclude_uid: str | None = None
     ):
-        uids = self.thread_subscribers.get(thread_id, set())
-        targets = [uid for uid in uids if uid != exclude_uid]
-        if targets:
-            await self._local_selective_broadcast(message, targets)
+        await self.extensions.broadcast_room(thread_id, message, exclude_uid)
 
     async def selective_broadcast(self, message: dict, uids: List[str]):
         await self._local_selective_broadcast(message, uids)
@@ -266,24 +283,25 @@ class ConnectionManager:
             pass
 
     async def answer(self, message: dict, websocket: WebSocket):
-        await websocket.send_json(message)
+        return await bounded_answer(self, message, websocket)
 
     async def _local_broadcast(self, message: dict):
-        for connections in self.active_connections.values():
-            for connection in connections:
-                try:
-                    await connection.send_json(message)
-                except Exception:
-                    pass
+        sockets = [
+            ws for group in list(self.active_connections.values()) for ws in list(group)
+        ]
+        if sockets:
+            await asyncio.gather(
+                *(self.answer(message, ws) for ws in sockets), return_exceptions=True
+            )
 
     async def _local_selective_broadcast(self, message: dict, uids: List[str]):
-        tasks = []
-        for uid in uids:
-            if uid in self.active_connections:
-                for connection in self.active_connections[uid]:
-                    tasks.append(connection.send_json(message))
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        sockets = [
+            ws for uid in set(uids) for ws in list(self.active_connections.get(uid, []))
+        ]
+        if sockets:
+            await asyncio.gather(
+                *(self.answer(message, ws) for ws in sockets), return_exceptions=True
+            )
 
     async def _connect_pubsub(self):
         self.pubsub_redis = aioredis.from_url(
@@ -327,6 +345,10 @@ class ConnectionManager:
                 cmd = json.loads(raw["data"])
             except (TypeError, ValueError):
                 print("decode error")
+                continue
+
+            if cmd.get("_durable") and isinstance(cmd.get("uids"), list):
+                await self.durable.flush_users(set(cmd["uids"]))
                 continue
 
             message = cmd.get("message")

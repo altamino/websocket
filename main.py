@@ -42,12 +42,14 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             try:
-                data = await ws.receive_json()
+                data = await manager.extensions.receive(ws)
             except Exception as e:
                 print(f"failed receive json: {e}")
                 break  # соединение мертво — выходим, finally сделает disconnect
 
-            if data.get("t") and data.get("o"):
+            if (
+                True
+            ):  # NativeProtocol validates the complete frame, including empty objects.
                 try:
                     await handle_message(data, manager, uid, admin, ws)
                 except Exception as e:

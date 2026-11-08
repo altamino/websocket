@@ -20,7 +20,6 @@ from helpers.constants import (
 )
 
 
-
 class ChatEvents:
     @staticmethod
     def new_message(
@@ -112,6 +111,7 @@ class PushEvents:
             "notifType": notif_type,
             "id": str(uuid.uuid4()),
             "ndcId": ndc_id,
+            "contextNdcId": ndc_id,
             "ts": _now_iso(),
             "aps": {
                 "badge": badge,

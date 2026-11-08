@@ -1,3 +1,4 @@
+import time
 from helpers.database.mongo import Database
 from helpers.constants import TTL_CHATTING, TTL_RECORDING, TTL_TYPING, TTL_VIEWER
 from helpers.connection_manager import ConnectionManager
@@ -27,26 +28,38 @@ def _key_chatting(ndcId: int, chatId: str) -> str:
 
 async def _redis_set_add_with_ttl(key: str, uid: str, ttl: int):
     redis = get_redis()
-    await redis.sadd(key, uid)
-    await redis.expire(key, ttl)
+    await redis.zadd(key + ":leases", {uid: time.time() + ttl})
+    await redis.expire(key + ":leases", ttl + 5)
+    members = await _redis_set_members(key)
+    return members
 
 
 async def _redis_set_remove(key: str, uid: str):
     redis = get_redis()
+    await redis.zrem(key + ":leases", uid)
     await redis.srem(key, uid)
 
 
 async def _redis_set_members(key: str) -> list[str]:
     redis = get_redis()
-    members = await redis.smembers(key)
-    return [m.decode() if isinstance(m, bytes) else m for m in members]
+    leases = key + ":leases"
+    if await redis.exists(leases):
+        await redis.zremrangebyscore(leases, "-inf", time.time())
+        raw = await redis.zrange(leases, 0, -1)
+        members = [u.decode() if isinstance(u, bytes) else u for u in raw]
+        pipe = redis.pipeline(transaction=True)
+        pipe.delete(key)
+        if members:
+            pipe.sadd(key, *members)
+            pipe.expire(key, 40)
+        await pipe.execute()
+        return members
+    raw = await redis.smembers(key)
+    return [u.decode() if isinstance(u, bytes) else u for u in raw]
 
 
 async def _refresh_chatting(uid: str, chatId: str, ndcId: int):
-    redis = get_redis()
-    key = _key_chatting(ndcId, chatId)
-    await redis.sadd(key, uid)
-    await redis.expire(key, TTL_CHATTING)
+    await _redis_set_add_with_ttl(_key_chatting(ndcId, chatId), uid, TTL_CHATTING)
 
 
 async def _get_profiles(ndcId: int, uids: list[str]) -> list[dict]:
@@ -140,6 +153,7 @@ async def on_chat_message_typing(
             ChatEvents.typing_start(chatId, ndcId, profiles),
             uids=viewers,
         )
+
 
 async def on_chat_message_typing_end(
     uid: str, chatId: str, ndcId: int, manager: ConnectionManager

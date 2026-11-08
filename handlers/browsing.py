@@ -6,7 +6,7 @@ def parse_browsing_target(target: str) -> tuple[str, str | None]:
     # ndc://x3/featured -> ("featured", None)
     # ndc://x3/blog/{uuid} -> ("blog", uuid)
     # ndc://x3/ -> ("root", None)
-    path = target.split("://", 1)[-1]        # "x3/blog/uuid"
+    path = target.split("://", 1)[-1]  # "x3/blog/uuid"
     segments = [s for s in path.split("/")[1:] if s]
     if not segments:
         return "root", None
